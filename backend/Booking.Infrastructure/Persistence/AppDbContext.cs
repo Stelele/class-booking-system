@@ -31,7 +31,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         });
         mb.Entity<BookingEntity>(e =>
         {
-            e.HasIndex(b => new { b.SlotId, b.StudentId, b.Status }).IsUnique();
+            // Active bookings unique per (slot, student); cancelled rows may repeat.
+            e.HasIndex(b => new { b.SlotId, b.StudentId, b.Status }).IsUnique().HasFilter("Status = 1");
             e.HasOne(b => b.Slot).WithMany(s => s.Bookings).HasForeignKey(b => b.SlotId);
         });
         mb.Entity<BlockedDay>(e => e.HasKey(b => b.Date));

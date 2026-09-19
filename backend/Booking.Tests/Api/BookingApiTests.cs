@@ -6,7 +6,7 @@ using Xunit;
 namespace Booking.Tests.Api;
 
 [Collection("Api")]
-public class BookingApiTests : IClassFixture<ApiFactory>
+public class BookingApiTests
 {
     private readonly ApiFactory _factory;
     public BookingApiTests(ApiFactory factory) => _factory = factory;
@@ -128,5 +128,42 @@ public class BookingApiTests : IClassFixture<ApiFactory>
         Assert.Contains("BEGIN:VCALENDAR", ics);
         Assert.Contains("TZID=Africa/Harare", ics);
         Assert.Contains("meet.google.com", ics);
+    }
+
+    [Fact]
+    public async Task Student_cannot_cancel_others_booking_and_anonymous_ics_rejected()
+    {
+        var a = await LoginAsync("studenta@example.com");
+        var b = await LoginAsync("studentb@example.com");
+        var date = FutureThursday(9);
+        var created = await (await a.PostAsJsonAsync("/api/bookings",
+            new { date = date.ToString("yyyy-MM-dd") })).Content.ReadFromJsonAsync<BookingDto>();
+        Assert.NotNull(created);
+
+        var hijack = await b.DeleteAsync($"/api/bookings/{created!.Id}");
+        Assert.Equal(HttpStatusCode.BadRequest, hijack.StatusCode);
+        Assert.Contains("own bookings", await hijack.Content.ReadAsStringAsync());
+
+        var anon = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anon.GetAsync($"/api/slots/{date:yyyy-MM-dd}/ics")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Invalid_month_rejected_and_admin_can_unblock()
+    {
+        var student = await LoginAsync("studenta@example.com");
+        var admin = await LoginAsync("teacher@example.com");
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await student.GetAsync("/api/slots?year=2026&month=13")).StatusCode);
+
+        var date = FutureThursday(10);
+        await admin.PostAsJsonAsync("/api/admin/blocked-days", new { date = date.ToString("yyyy-MM-dd"), reason = "trip" });
+        var blockedRes = await admin.DeleteAsync($"/api/admin/blocked-days/{date:yyyy-MM-dd}");
+        Assert.Equal(HttpStatusCode.OK, blockedRes.StatusCode);
+
+        var book = await student.PostAsJsonAsync("/api/bookings", new { date = date.ToString("yyyy-MM-dd") });
+        Assert.Equal(HttpStatusCode.OK, book.StatusCode);
     }
 }

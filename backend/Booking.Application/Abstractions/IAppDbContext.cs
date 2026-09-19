@@ -3,6 +3,7 @@ using Booking.Domain.Backups;
 using Booking.Domain.Slots;
 using Booking.Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using BookingEntity = Booking.Domain.Slots.Booking;
 
 namespace Booking.Application.Abstractions;
@@ -15,5 +16,6 @@ public interface IAppDbContext
     DbSet<BlockedDay> BlockedDays { get; }
     DbSet<AuthCode> AuthCodes { get; }
     DbSet<BackupLog> BackupLogs { get; }
+    ChangeTracker ChangeTracker { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

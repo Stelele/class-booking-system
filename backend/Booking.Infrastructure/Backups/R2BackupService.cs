@@ -91,8 +91,14 @@ public sealed class R2BackupService(
             await gunzip.CopyToAsync(outDb, ct);
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(DbPath))!);
-        File.Copy(tmp, DbPath, overwrite: true);
-        log.LogWarning("Restored DB from {Key}; restarting.", newest.Key);
-        Environment.Exit(0); // container restart policy brings the app back, migration runs on boot
+        // swap + restart AFTER the HTTP response has flushed — Environment.Exit here would
+        // abort the connection and turn the endpoint's 200 into a client-side error.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), CancellationToken.None);
+            File.Copy(tmp, DbPath, overwrite: true);
+            log.LogWarning("Restored DB from {Key}; restarting.", newest.Key);
+            Environment.Exit(0); // container restart policy brings the app back, migration runs on boot
+        });
     }
 }

@@ -31,6 +31,10 @@ public static class DependencyInjection
             services.AddSingleton<IBackupService, R2BackupService>();
             services.AddHostedService<BackupWorker>();
         }
+        else
+        {
+            services.AddSingleton<IBackupService, NullBackupService>();
+        }
         return services;
     }
 

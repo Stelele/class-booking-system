@@ -13,30 +13,30 @@ public static class BookingEndpoints
     {
         var group = app.MapGroup("/api/bookings").RequireAuthorization();
 
-        group.MapGet("/mine", async (ISender sender) =>
-            Results.Ok(await sender.Send(new GetMyBookingsQuery())));
+        group.MapGet("/mine", async (ISender sender, CancellationToken ct) =>
+            Results.Ok(await sender.Send(new GetMyBookingsQuery(), ct)));
 
-        group.MapPost("/", async (CreateBookingRequest req, ISender sender) =>
+        group.MapPost("", async (CreateBookingRequest req, ISender sender, CancellationToken ct) =>
         {
             try
             {
-                return Results.Ok(await sender.Send(new CreateBookingCommand(req.Date)));
+                return Results.Ok(await sender.Send(new CreateBookingCommand(req.Date), ct));
             }
             catch (BookingException ex) { return Results.BadRequest(new { error = ex.Message }); }
         });
 
-        group.MapPost("/{id:guid}/reschedule", async (Guid id, RescheduleRequest req, ISender sender) =>
+        group.MapPost("/{id:guid}/reschedule", async (Guid id, RescheduleRequest req, ISender sender, CancellationToken ct) =>
         {
             try
             {
-                return Results.Ok(await sender.Send(new RescheduleBookingCommand(id, req.NewDate)));
+                return Results.Ok(await sender.Send(new RescheduleBookingCommand(id, req.NewDate), ct));
             }
             catch (BookingException ex) { return Results.BadRequest(new { error = ex.Message }); }
         });
 
-        group.MapDelete("/{id:guid}", async (Guid id, ISender sender) =>
+        group.MapDelete("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
-            try { return Results.Ok(await sender.Send(new CancelBookingCommand(id))); }
+            try { return Results.Ok(await sender.Send(new CancelBookingCommand(id), ct)); }
             catch (BookingException ex) { return Results.BadRequest(new { error = ex.Message }); }
         });
 

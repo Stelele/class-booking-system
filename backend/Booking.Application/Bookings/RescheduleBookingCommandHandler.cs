@@ -38,7 +38,21 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
         booking.OriginalDate ??= booking.Slot.Date;
         booking.SlotId = slot.Id;
         booking.UpdatedAtUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // concurrent move to the same fresh day: unique Slot.Date index lost the race —
+            // re-attach to the winning slot and retry once
+            db.ChangeTracker.Clear();
+            var winner = await db.Slots.FirstAsync(s => s.Date == c.NewDate, ct);
+            booking = await db.Bookings.FirstAsync(b => b.Id == booking.Id, ct);
+            booking.SlotId = winner.Id;
+            await db.SaveChangesAsync(ct);
+            slot = winner;
+        }
 
         return new BookingDto(booking.Id, c.NewDate, LessonTime.StartUtc(c.NewDate), user.Name,
             CanCancel: true, CanReschedule: true, OriginalDate: booking.OriginalDate, MeetLink: slot.MeetLink);

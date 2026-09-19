@@ -1,4 +1,4 @@
-namespace Booking.Infrastructure.Backups;
+namespace Booking.Application.Abstractions;
 
 public interface IBackupService
 {

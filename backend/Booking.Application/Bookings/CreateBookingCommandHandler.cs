@@ -31,7 +31,20 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
 
         var booking = new BookingEntity { SlotId = slot.Id, StudentId = user.UserId };
         db.Bookings.Add(booking);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // concurrent first-booking on the same day: unique Slot.Date index lost the race —
+            // re-attach to the winning slot and retry once
+            db.ChangeTracker.Clear();
+            var winner = await db.Slots.FirstAsync(s => s.Date == c.Date, ct);
+            booking = new BookingEntity { SlotId = winner.Id, StudentId = user.UserId };
+            db.Bookings.Add(booking);
+            await db.SaveChangesAsync(ct);
+        }
 
         return new BookingDto(booking.Id, c.Date, LessonTime.StartUtc(c.Date), user.Name,
             CanCancel: true, CanReschedule: true, OriginalDate: null, MeetLink: slot.MeetLink);

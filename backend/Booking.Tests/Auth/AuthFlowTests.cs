@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace Booking.Tests.Auth;
 
 [Collection("Api")]
-public class AuthFlowTests : IClassFixture<ApiFactory>
+public class AuthFlowTests
 {
     private readonly ApiFactory _factory;
     public AuthFlowTests(ApiFactory factory) => _factory = factory;
