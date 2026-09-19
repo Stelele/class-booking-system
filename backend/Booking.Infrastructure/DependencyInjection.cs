@@ -1,4 +1,5 @@
 using Booking.Application.Abstractions;
+using Booking.Infrastructure.Auth;
 using Booking.Infrastructure.Backups;
 using Booking.Infrastructure.Identity;
 using Booking.Infrastructure.Meet;
@@ -20,9 +21,11 @@ public static class DependencyInjection
         var conn = new SqliteConnection($"Data Source={dbPath};Foreign Keys=True");
         services.AddSingleton(conn);
         services.AddDbContext<AppDbContext>((sp, o) => o.UseSqlite(sp.GetRequiredService<SqliteConnection>()));
+        services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
+        services.AddScoped<ICodeSender, EmailCodeSender>();
         if (!string.IsNullOrEmpty(config["R2:Bucket"]))
         {
             services.AddSingleton<IBackupService, R2BackupService>();
