@@ -38,12 +38,18 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
         catch (DbUpdateException)
         {
             // concurrent first-booking on the same day: unique Slot.Date index lost the race —
-            // re-attach to the winning slot and retry once
+            // re-attach to the winning slot and retry once; if the failure was a duplicate
+            // active booking by this student, reject cleanly instead of retry-looping
             db.ChangeTracker.Clear();
-            var winner = await db.Slots.FirstAsync(s => s.Date == c.Date, ct);
+            var winner = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.Date, ct);
+            if (winner is null) throw;
+            var dupeActive = await db.Bookings.AnyAsync(b =>
+                b.StudentId == user.UserId && b.Status == BookingStatus.Active && b.SlotId == winner.Id, ct);
+            if (dupeActive) throw new BookingException("You already have a booking on that day.");
             booking = new BookingEntity { SlotId = winner.Id, StudentId = user.UserId };
             db.Bookings.Add(booking);
             await db.SaveChangesAsync(ct);
+            slot = winner;
         }
 
         return new BookingDto(booking.Id, c.Date, LessonTime.StartUtc(c.Date), user.Name,

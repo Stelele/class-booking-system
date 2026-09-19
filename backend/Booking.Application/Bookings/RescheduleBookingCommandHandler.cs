@@ -35,7 +35,8 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
 
         slot.MeetLink ??= await meet.GetOrCreateLinkAsync(c.NewDate, ct);
 
-        booking.OriginalDate ??= booking.Slot.Date;
+        var originalDate = booking.OriginalDate ?? booking.Slot.Date;
+        booking.OriginalDate = originalDate;
         booking.SlotId = slot.Id;
         booking.UpdatedAtUtc = DateTime.UtcNow;
         try
@@ -45,11 +46,19 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
         catch (DbUpdateException)
         {
             // concurrent move to the same fresh day: unique Slot.Date index lost the race —
-            // re-attach to the winning slot and retry once
+            // re-attach to the winning slot, restore the audit fields the failed save
+            // never persisted, and retry once; duplicate active booking → clean rejection
             db.ChangeTracker.Clear();
-            var winner = await db.Slots.FirstAsync(s => s.Date == c.NewDate, ct);
+            var winner = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.NewDate, ct);
+            if (winner is null) throw;
+            var dupeActive = await db.Bookings.AnyAsync(b =>
+                b.StudentId == booking.StudentId && b.Status == BookingStatus.Active &&
+                b.SlotId == winner.Id && b.Id != booking.Id, ct);
+            if (dupeActive) throw new BookingException("You already have a booking on the new day.");
             booking = await db.Bookings.FirstAsync(b => b.Id == booking.Id, ct);
+            booking.OriginalDate = originalDate;
             booking.SlotId = winner.Id;
+            booking.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             slot = winner;
         }

@@ -67,8 +67,13 @@ public sealed class R2BackupService(
         return last?.RanAtUtc;
     }
 
-    public async Task RestoreLatestAsync(CancellationToken ct = default)
+    private int _restoreGate;
+
+    public async Task<Func<Task>> RestoreLatestAsync(CancellationToken ct = default)
     {
+        if (Interlocked.CompareExchange(ref _restoreGate, 1, 0) != 0)
+            throw new InvalidOperationException("A restore is already in progress.");
+
         using var s3 = Client();
         var list = await s3.ListObjectsV2Async(new ListObjectsV2Request
         {
@@ -91,14 +96,24 @@ public sealed class R2BackupService(
             await gunzip.CopyToAsync(outDb, ct);
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(DbPath))!);
-        // swap + restart AFTER the HTTP response has flushed — Environment.Exit here would
-        // abort the connection and turn the endpoint's 200 into a client-side error.
-        _ = Task.Run(async () =>
+
+        // The swap runs after the caller's HTTP response has flushed (Response.OnCompleted);
+        // it ends the process so the container restarts onto the restored DB.
+        return async () =>
         {
-            await Task.Delay(TimeSpan.FromSeconds(1), CancellationToken.None);
-            File.Copy(tmp, DbPath, overwrite: true);
-            log.LogWarning("Restored DB from {Key}; restarting.", newest.Key);
-            Environment.Exit(0); // container restart policy brings the app back, migration runs on boot
-        });
+            try
+            {
+                File.Copy(tmp, DbPath, overwrite: true);
+                log.LogWarning("Restored DB from {Key}; restarting.", newest.Key);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Restore swap failed — restarting on the existing DB");
+            }
+            finally
+            {
+                Environment.Exit(0);
+            }
+        };
     }
 }

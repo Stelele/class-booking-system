@@ -26,11 +26,13 @@ public static class AdminEndpoints
         group.MapGet("/backups", async (IBackupService backups, CancellationToken ct) =>
             Results.Ok(new { lastBackupUtc = await backups.LastBackupUtcAsync(ct) }));
 
-        group.MapPost("/backups/restore", async (IBackupService backups, CancellationToken ct) =>
+        group.MapPost("/backups/restore", async (IBackupService backups, HttpContext http, CancellationToken ct) =>
         {
             try
             {
-                await backups.RestoreLatestAsync(ct);
+                var swapAndRestart = await backups.RestoreLatestAsync(ct);
+                // deterministic: swap only after the 200 has flushed to the client
+                http.Response.OnCompleted(() => swapAndRestart());
                 return Results.Ok(new { restoring = true });
             }
             catch (InvalidOperationException ex)
