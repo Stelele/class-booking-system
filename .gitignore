@@ -1,0 +1,26 @@
+# backend
+backend/**/bin/
+backend/**/obj/
+backend/data/
+*.user
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+
+# e2e
+e2e/.playwright/
+e2e/test-results/
+e2e/playwright-report/
+
+# infra
+infra/.pulumi/
+infra/*.state
+infra/.env
+
+# misc
+.superpowers/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
