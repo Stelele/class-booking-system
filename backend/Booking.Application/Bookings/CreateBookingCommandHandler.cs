@@ -1,0 +1,36 @@
+using Booking.Application.Abstractions;
+using Booking.Application.DTOs;
+using Booking.Domain.Slots;
+using Microsoft.EntityFrameworkCore;
+using BookingEntity = Booking.Domain.Slots.Booking;
+
+namespace Booking.Application.Bookings;
+
+public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet)
+    : ICommandHandler<CreateBookingCommand, BookingDto>
+{
+    public async Task<BookingDto> Handle(CreateBookingCommand c, CancellationToken ct)
+    {
+        var blocked = await db.BlockedDays.Select(b => b.Date).ToListAsync(ct);
+        var error = BookingPolicy.Validate(c.Date, DateTime.UtcNow, blocked);
+        if (error is not null) throw new BookingException(error);
+
+        var existingActive = await db.Bookings.AnyAsync(b =>
+            b.StudentId == user.UserId && b.Status == BookingStatus.Active &&
+            b.Slot.Date == c.Date, ct);
+        if (existingActive) throw new BookingException("You already have a booking on that day.");
+
+        var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.Date, ct)
+                   ?? new Slot { Date = c.Date };
+        if (slot.Id == Guid.Empty) db.Slots.Add(slot);
+
+        slot.MeetLink ??= await meet.GetOrCreateLinkAsync(c.Date, ct);
+
+        var booking = new BookingEntity { SlotId = slot.Id, StudentId = user.UserId };
+        db.Bookings.Add(booking);
+        await db.SaveChangesAsync(ct);
+
+        return new BookingDto(booking.Id, c.Date, LessonTime.StartUtc(c.Date), user.Name,
+            CanCancel: true, CanReschedule: true, OriginalDate: null, MeetLink: slot.MeetLink);
+    }
+}
