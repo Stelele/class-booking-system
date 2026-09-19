@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Booking.Tests.Api;
 
+[Collection("Api")]
 public class BookingApiTests : IClassFixture<ApiFactory>
 {
     private readonly ApiFactory _factory;

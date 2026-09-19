@@ -57,3 +57,6 @@ public class ApiFactory : WebApplicationFactory<Program>
         }
     }
 }
+
+[CollectionDefinition("Api")]
+public sealed class ApiCollection : ICollectionFixture<ApiFactory>;
