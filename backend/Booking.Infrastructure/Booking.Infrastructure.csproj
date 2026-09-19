@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Booking.Domain\Booking.Domain.csproj" />
+    <ProjectReference Include="..\Booking.Application\Booking.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,4 +22,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>
