@@ -271,8 +271,25 @@ Immediate: booking confirmed / cancelled / rescheduled (with new time)
 | Domain | xUnit | booking rules table in §2/§5 (every row) |
 | API | xUnit `WebApplicationFactory` | auth flow, endpoints, invariants, TZ edges (BST flip) |
 | Frontend | Vitest + Vue Test Utils | composable TZ display, calendar states |
+| E2E | Playwright | full-system journeys (below) |
 | Review | CodeRabbit | PR-blocking |
 | CI | GH Actions | all tests green → deploy |
+
+**E2E journeys (Playwright, real backend + SQLite test file + frontend, seeded users):**
+
+```
+1. request magic code → read from test endpoint → verify → logged in
+2. student books a free day → appears on shared calendar with avatar
+3. student B books same day → combined session shown for both
+4. student cancels + reschedules → calendar updates, audit kept
+5. Sunday + blocked day → not bookable in UI
+6. admin blocks a day → student sees it greyed, booking rejected
+7. within-30-min slot → booking rejected with clear error
+8. TZ: student viewport shows London time alongside Harare time
+```
+
+- E2E runs in CI on every PR (same GH Actions job, after unit/integration green).
+- External services stubbed at the boundary (Google/Twilio/R2 behind interfaces; E2E swaps in fakes) — journeys test *our* system as a whole, not third parties.
 
 Branch protection: no direct pushes to `main`, PRs only, CI + CodeRabbit required.
 
