@@ -36,7 +36,13 @@ public sealed class BackupWorker(
         var dbPath = config["App:DbPath"] ?? "data/booking.db";
         if (!File.Exists(dbPath))
         {
-            try { backups.RestoreLatestAsync(CancellationToken.None).GetAwaiter().GetResult(); }
+            try
+            {
+                // at startup there's no HTTP response to wait for — run the swap immediately;
+                // it replaces the DB file and exits so we boot onto the restored snapshot
+                var swap = backups.RestoreLatestAsync(CancellationToken.None).GetAwaiter().GetResult();
+                swap().GetAwaiter().GetResult();
+            }
             catch (Exception ex) { log.LogWarning(ex, "No R2 backup restored; starting fresh DB."); }
         }
     }
