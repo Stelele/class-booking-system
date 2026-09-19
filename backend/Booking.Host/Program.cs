@@ -33,6 +33,10 @@ app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuth();
+app.MapSlots();
+app.MapIcs();
+app.MapBookings();
+app.MapAdmin();
 
 await app.MigrateAndSeedAsync();
 app.Run();

@@ -20,9 +20,12 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
             b.Slot.Date == c.Date, ct);
         if (existingActive) throw new BookingException("You already have a booking on that day.");
 
-        var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.Date, ct)
-                   ?? new Slot { Date = c.Date };
-        if (slot.Id == Guid.Empty) db.Slots.Add(slot);
+        var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.Date, ct);
+        if (slot is null)
+        {
+            slot = new Slot { Date = c.Date };
+            db.Slots.Add(slot);
+        }
 
         slot.MeetLink ??= await meet.GetOrCreateLinkAsync(c.Date, ct);
 

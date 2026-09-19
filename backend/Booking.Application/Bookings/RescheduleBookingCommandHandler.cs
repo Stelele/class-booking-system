@@ -26,9 +26,12 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             b.Status == BookingStatus.Active && b.Slot.Date == c.NewDate, ct);
         if (clash) throw new BookingException("You already have a booking on the new day.");
 
-        var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.NewDate, ct)
-                   ?? new Slot { Date = c.NewDate };
-        if (slot.Id == Guid.Empty) db.Slots.Add(slot);
+        var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.NewDate, ct);
+        if (slot is null)
+        {
+            slot = new Slot { Date = c.NewDate };
+            db.Slots.Add(slot);
+        }
 
         slot.MeetLink ??= await meet.GetOrCreateLinkAsync(c.NewDate, ct);
 
