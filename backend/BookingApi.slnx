@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="Booking.Application/Booking.Application.csproj" />
+  <Project Path="Booking.Domain/Booking.Domain.csproj" />
+  <Project Path="Booking.Endpoints/Booking.Endpoints.csproj" />
+  <Project Path="Booking.Host/Booking.Host.csproj" />
+  <Project Path="Booking.Infrastructure/Booking.Infrastructure.csproj" />
+  <Project Path="Booking.Tests/Booking.Tests.csproj" />
+</Solution>
