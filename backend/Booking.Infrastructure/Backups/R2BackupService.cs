@@ -1,6 +1,7 @@
 using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.S3.Transfer;
+using System.IO.Compression;
 using Microsoft.Extensions.DependencyInjection;
 using Booking.Application.Abstractions;
 using Booking.Domain.Backups;
@@ -74,6 +75,21 @@ public sealed class R2BackupService(
         if (Interlocked.CompareExchange(ref _restoreGate, 1, 0) != 0)
             throw new InvalidOperationException("A restore is already in progress.");
 
+        try
+        {
+            return await StageRestore(ct);
+        }
+        catch
+        {
+            // staging failed — release the gate so future restores can proceed;
+            // only hold it once a swap is actually armed
+            Interlocked.Exchange(ref _restoreGate, 0);
+            throw;
+        }
+    }
+
+    private async Task<Func<Task>> StageRestore(CancellationToken ct)
+    {
         using var s3 = Client();
         var list = await s3.ListObjectsV2Async(new ListObjectsV2Request
         {
@@ -90,10 +106,17 @@ public sealed class R2BackupService(
             await resp.ResponseStream.CopyToAsync(file, ct);
 
         var tmp = tmpGz + ".db";
-        await using (var gz = File.OpenRead(tmpGz))
-        await using (var outDb = File.Create(tmp))
-        await using (var gunzip = new System.IO.Compression.GZipStream(gz, System.IO.Compression.CompressionMode.Decompress))
-            await gunzip.CopyToAsync(outDb, ct);
+        try
+        {
+            await using (var gz = File.OpenRead(tmpGz))
+            await using (var outDb = File.Create(tmp))
+            await using (var gunzip = new System.IO.Compression.GZipStream(gz, System.IO.Compression.CompressionMode.Decompress))
+                await gunzip.CopyToAsync(outDb, ct);
+        }
+        catch (InvalidDataException)
+        {
+            throw new InvalidOperationException("Latest backup snapshot is corrupt.");
+        }
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(DbPath))!);
 
