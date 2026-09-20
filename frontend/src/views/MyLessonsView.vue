@@ -26,8 +26,10 @@ async function cancel(id: string) {
 }
 
 async function loadSlotsForReschedule() {
-  const now = new Date()
-  days.value = await api<SlotDay[]>(`/slots?year=${now.getFullYear()}&month=${now.getMonth() + 2}`)
+  try {
+    const next = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
+    days.value = await api<SlotDay[]>(`/slots?year=${next.getFullYear()}&month=${next.getMonth() + 1}`)
+  } catch (e: unknown) { error.value = e instanceof Error ? e.message : 'Could not load days.' }
 }
 
 async function rescheduleTo(date: string) {

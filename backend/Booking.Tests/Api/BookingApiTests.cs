@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Booking.Application.DTOs;
 using Xunit;
 
@@ -8,6 +10,10 @@ namespace Booking.Tests.Api;
 [Collection("Api")]
 public class BookingApiTests
 {
+    // matches the API's ConfigureHttpJsonOptions (string enums)
+    internal static readonly JsonSerializerOptions ApiJson =
+        new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+
     private readonly ApiFactory _factory;
     public BookingApiTests(ApiFactory factory) => _factory = factory;
 
@@ -43,7 +49,7 @@ public class BookingApiTests
         var booking = await student.PostAsJsonAsync("/api/bookings", new { date = date.ToString("yyyy-MM-dd") });
         Assert.Equal(HttpStatusCode.OK, booking.StatusCode);
 
-        var days = await student.GetFromJsonAsync<List<SlotDayDto>>($"/api/slots?year={date.Year}&month={date.Month}");
+        var days = await student.GetFromJsonAsync<List<SlotDayDto>>($"/api/slots?year={date.Year}&month={date.Month}", ApiJson);
         var day = days!.Single(d => d.Date == date);
         Assert.Equal(DayState.Booked, day.State);
         Assert.Contains("Student A", day.StudentNames);
@@ -59,7 +65,7 @@ public class BookingApiTests
         await a.PostAsJsonAsync("/api/bookings", new { date = date.ToString("yyyy-MM-dd") });
         await b.PostAsJsonAsync("/api/bookings", new { date = date.ToString("yyyy-MM-dd") });
 
-        var days = await b.GetFromJsonAsync<List<SlotDayDto>>($"/api/slots?year={date.Year}&month={date.Month}");
+        var days = await b.GetFromJsonAsync<List<SlotDayDto>>($"/api/slots?year={date.Year}&month={date.Month}", ApiJson);
         Assert.Equal(DayState.Combined, days!.Single(d => d.Date == date).State);
     }
 
@@ -100,7 +106,7 @@ public class BookingApiTests
         var cancel = await student.DeleteAsync($"/api/bookings/{created.Id}");
         Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
 
-        var mine = await student.GetFromJsonAsync<List<BookingDto>>("/api/bookings/mine");
+        var mine = await student.GetFromJsonAsync<List<BookingDto>>("/api/bookings/mine", ApiJson);
         Assert.DoesNotContain(mine!, b => b.Id == created.Id);
     }
 
