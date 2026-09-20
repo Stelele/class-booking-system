@@ -13,6 +13,7 @@ jobs:
       # ephemeral local state: our Commands re-run idempotently every deploy
       PULUMI_BACKEND_URL: file://${{ github.workspace }}/infra/.pulumi-state
       PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
+      DOMAIN: lessons.giftmugweni.com
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

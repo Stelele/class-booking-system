@@ -44,9 +44,12 @@ return await Deployment.RunAsync(() =>
 {
     // ── inputs ──────────────────────────────────────────────────────────────
 
-    var domain = new Config().Get("class-booking:domain")
+    // DOMAIN env (CI) wins; Pulumi stack config is the local fallback — the
+    // ephemeral-state CI stack reliably fails to carry yaml config across runs
+    var domain = Environment.GetEnvironmentVariable("DOMAIN")
+        ?? new Config().Get("class-booking:domain")
         ?? throw new InvalidOperationException(
-            "Config 'class-booking:domain' is required — set it in infra/Pulumi.prod.yaml.");
+            "Domain missing — set DOMAIN env or class-booking:domain config.");
 
     // Guard against path/command injection via the domain (it is embedded in
     // remote file paths and the command string below).

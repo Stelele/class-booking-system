@@ -1,2 +1,3 @@
 config:
   class-booking:domain: lessons.giftmugweni.com
+encryptionsalt: v1:tvb8wsPQZIA=:v1:ATjTWH8QAadECIPV:uLwexwJA5pJofHvjWGSSIguuWfnSmA==
