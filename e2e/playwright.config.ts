@@ -16,7 +16,8 @@ export default defineConfig({
   use: { baseURL: 'http://localhost:5173' },
   webServer: [
     {
-      command: `cd ${root}/backend && dotnet run --project Booking.Host --no-launch-profile`,
+      // a previous run's servers can linger for a moment — wait for the ports first
+      command: `i=0; while ss -ltn | grep -q ':8080 ' && [ $i -lt 30 ]; do sleep 0.5; i=$((i+1)); done; cd ${root}/backend && dotnet run --project Booking.Host --no-launch-profile`,
       url: 'http://localhost:8080/health',
       reuseExistingServer: false,
       timeout: 180_000,
@@ -30,10 +31,10 @@ export default defineConfig({
       },
     },
     {
-      command: 'npm run dev',
+      command: `i=0; while ss -ltn | grep -q ':5173 ' && [ $i -lt 30 ]; do sleep 0.5; i=$((i+1)); done; npm run dev`,
       url: 'http://localhost:5173',
       reuseExistingServer: false,
-      timeout: 90_000,
+      timeout: 180_000,
       cwd: resolve(root, 'frontend'),
     },
   ],
