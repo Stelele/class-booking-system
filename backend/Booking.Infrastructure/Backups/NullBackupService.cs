@@ -9,4 +9,5 @@ public sealed class NullBackupService : IBackupService
     public Task<DateTime?> LastBackupUtcAsync(CancellationToken ct = default) => Task.FromResult<DateTime?>(null);
     public Task<Func<Task>> RestoreLatestAsync(CancellationToken ct = default)
         => throw new InvalidOperationException("Backups are not configured.");
+    public Task<bool> TryRestoreAsync(CancellationToken ct = default) => Task.FromResult(false);
 }

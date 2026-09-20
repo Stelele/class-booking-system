@@ -6,12 +6,12 @@ using Microsoft.Extensions.Logging;
 namespace Booking.Infrastructure.Backups;
 
 /// Nightly backup at 00:00 UTC (02:00 Africa/Harare — CAT is UTC+2 year-round).
+/// Startup restore lives in MigrateAndSeedAsync (must run before the first migration).
 public sealed class BackupWorker(
     IBackupService backups, IConfiguration config, ILogger<BackupWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        RestoreIfEmpty();
         while (!ct.IsCancellationRequested)
         {
             var now = DateTime.UtcNow;
@@ -28,22 +28,6 @@ public sealed class BackupWorker(
                 try { await Task.Delay(TimeSpan.FromHours(1), ct); }
                 catch (OperationCanceledException) { }
             }
-        }
-    }
-
-    private void RestoreIfEmpty()
-    {
-        var dbPath = config["App:DbPath"] ?? "data/booking.db";
-        if (!File.Exists(dbPath))
-        {
-            try
-            {
-                // at startup there's no HTTP response to wait for — run the swap immediately;
-                // it replaces the DB file and exits so we boot onto the restored snapshot
-                var swap = backups.RestoreLatestAsync(CancellationToken.None).GetAwaiter().GetResult();
-                swap().GetAwaiter().GetResult();
-            }
-            catch (Exception ex) { log.LogWarning(ex, "No R2 backup restored; starting fresh DB."); }
         }
     }
 }

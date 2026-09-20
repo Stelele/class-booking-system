@@ -9,6 +9,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Booking.Infrastructure;
 
@@ -40,6 +41,25 @@ public static class DependencyInjection
 
     public static async Task MigrateAndSeedAsync(this WebApplication app)
     {
+        // restore BEFORE migrating: on a fresh container the DB file must come from R2,
+        // otherwise migration creates an empty DB and the nightly backup buries the real one
+        var dbPath = app.Configuration["App:DbPath"] ?? "data/booking.db";
+        if (!File.Exists(dbPath) && !string.IsNullOrEmpty(app.Configuration["R2:Bucket"]))
+        {
+            try
+            {
+                var backups = app.Services.GetRequiredService<IBackupService>();
+                var restore = backups.TryRestoreAsync();
+                var done = await Task.WhenAny(restore, Task.Delay(TimeSpan.FromSeconds(30)));
+                if (done != restore)
+                    app.Logger.LogWarning("Startup restore timed out; booting on a fresh DB.");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex, "Startup restore failed; booting on a fresh DB.");
+            }
+        }
+
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();

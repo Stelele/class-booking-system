@@ -77,7 +77,25 @@ public sealed class R2BackupService(
 
         try
         {
-            return await StageRestore(ct);
+            var (staged, key) = await StageRestore(ct);
+            // The swap runs after the caller's HTTP response has flushed (Response.OnCompleted);
+            // it ends the process so the container restarts onto the restored DB.
+            return async () =>
+            {
+                try
+                {
+                    AtomicSwap(staged);
+                    log.LogWarning("Restored DB from {Key}; restarting.", key);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "Restore swap failed — restarting on the existing DB");
+                }
+                finally
+                {
+                    Environment.Exit(0);
+                }
+            };
         }
         catch
         {
@@ -88,7 +106,31 @@ public sealed class R2BackupService(
         }
     }
 
-    private async Task<Func<Task>> StageRestore(CancellationToken ct)
+    public async Task<bool> TryRestoreAsync(CancellationToken ct = default)
+    {
+        if (Interlocked.CompareExchange(ref _restoreGate, 1, 0) != 0)
+            return false; // another restore in flight — boot fresh rather than block
+        try
+        {
+            var (staged, key) = await StageRestore(ct);
+            AtomicSwap(staged);
+            log.LogWarning("Startup restore from {Key} applied.", key);
+            return true;
+        }
+        catch (InvalidOperationException) { throw; }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Startup restore failed; starting fresh DB.");
+            return false;
+        }
+        finally
+        {
+            // no pending swap on this path — the gate must not stay latched
+            Interlocked.Exchange(ref _restoreGate, 0);
+        }
+    }
+
+    private async Task<(string StagedPath, string Key)> StageRestore(CancellationToken ct)
     {
         using var s3 = Client();
         var list = await s3.ListObjectsV2Async(new ListObjectsV2Request
@@ -110,7 +152,7 @@ public sealed class R2BackupService(
         {
             await using (var gz = File.OpenRead(tmpGz))
             await using (var outDb = File.Create(tmp))
-            await using (var gunzip = new System.IO.Compression.GZipStream(gz, System.IO.Compression.CompressionMode.Decompress))
+            await using (var gunzip = new GZipStream(gz, CompressionMode.Decompress))
                 await gunzip.CopyToAsync(outDb, ct);
         }
         catch (InvalidDataException)
@@ -119,24 +161,15 @@ public sealed class R2BackupService(
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(DbPath))!);
+        return (tmp, newest.Key);
+    }
 
-        // The swap runs after the caller's HTTP response has flushed (Response.OnCompleted);
-        // it ends the process so the container restarts onto the restored DB.
-        return async () =>
-        {
-            try
-            {
-                File.Copy(tmp, DbPath, overwrite: true);
-                log.LogWarning("Restored DB from {Key}; restarting.", newest.Key);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Restore swap failed — restarting on the existing DB");
-            }
-            finally
-            {
-                Environment.Exit(0);
-            }
-        };
+    /// Atomic on the same filesystem: a midway failure never leaves a truncated booking.db.
+    private void AtomicSwap(string staged)
+    {
+        var finalTmp = DbPath + ".restore.tmp";
+        File.Copy(staged, finalTmp, overwrite: true);
+        if (File.Exists(DbPath)) File.Replace(finalTmp, DbPath, null);
+        else File.Move(finalTmp, DbPath);
     }
 }
