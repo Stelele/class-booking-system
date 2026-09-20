@@ -1,0 +1,32 @@
+services:
+  backend:
+    image: ghcr.io/${GH_OWNER}/class-booking-backend:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - App__DbPath=/app/data/booking.db
+      - App__FixedMeetLink=${FIXED_MEET_LINK}
+      - R2__AccountId=${R2_ACCOUNT_ID}
+      - R2__AccessKeyId=${R2_KEY_ID}
+      - R2__SecretAccessKey=${R2_SECRET}
+      - R2__Bucket=${R2_BUCKET}
+      - Smtp__Host=${SMTP_HOST}
+      - Smtp__Port=${SMTP_PORT}
+      - Smtp__From=${SMTP_FROM}
+      - App__Users__0__Email=${TEACHER_EMAIL}
+      - App__Users__1__Email=${STUDENT_A_EMAIL}
+      - App__Users__2__Email=${STUDENT_B_EMAIL}
+    volumes:
+      - booking-data:/app/data
+
+  frontend:
+    image: ghcr.io/${GH_OWNER}/class-booking-frontend:${TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"
+    depends_on:
+      - backend
+
+volumes:
+  booking-data:
