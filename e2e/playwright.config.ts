@@ -1,13 +1,11 @@
 import { defineConfig } from '@playwright/test'
-import { rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const root = resolve(__dirname, '..')
 
-// fresh SQLite file per run (wal/shm too — a stale WAL beside a new DB risks corruption)
-rmSync(`${root}/data/e2e.db`, { force: true })
-rmSync(`${root}/data/e2e.db-shm`, { force: true })
-rmSync(`${root}/data/e2e.db-wal`, { force: true })
+// NOTE: do NOT delete data/e2e.db at config-module scope — Playwright workers
+// re-evaluate this module mid-run and would delete the live database under the
+// running backend. The fresh-db rm lives in the backend webServer command below.
 
 export default defineConfig({
   testDir: 'tests',
@@ -16,8 +14,10 @@ export default defineConfig({
   use: { baseURL: 'http://localhost:5173' },
   webServer: [
     {
-      // a previous run's servers can linger for a moment — wait for the ports first
-      command: `i=0; while ss -ltn | grep -q ':8080 ' && [ $i -lt 30 ]; do sleep 0.5; i=$((i+1)); done; cd ${root}/backend && dotnet run --project Booking.Host --no-launch-profile`,
+      // SIGKILL any previous instance FIRST — a gracefully-dying server still
+      // answers /health during shutdown, and Playwright would run the whole
+      // suite against a zombie whose DB file the command below deletes
+      command: `bash ${root}/e2e/kill-servers.sh 8080 && rm -f ${root}/data/e2e.db ${root}/data/e2e.db-shm ${root}/data/e2e.db-wal && cd ${root}/backend && dotnet run --project Booking.Host --no-launch-profile > /tmp/e2e-be.log 2>&1`,
       url: 'http://localhost:8080/health',
       reuseExistingServer: false,
       timeout: 180_000,
@@ -31,10 +31,11 @@ export default defineConfig({
       },
     },
     {
-      command: `i=0; while ss -ltn | grep -q ':5173 ' && [ $i -lt 30 ]; do sleep 0.5; i=$((i+1)); done; npm run dev`,
+      command: `bash ${root}/e2e/kill-servers.sh 5173 && npm run dev`,
       url: 'http://localhost:5173',
       reuseExistingServer: false,
       timeout: 180_000,
+      stdout: 'pipe',
       cwd: resolve(root, 'frontend'),
     },
   ],

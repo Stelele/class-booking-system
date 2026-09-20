@@ -5,7 +5,6 @@ using Booking.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -19,15 +18,14 @@ public class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // fresh SQLite file per test-host run (pooled connections open per context)
+        var path = Path.Combine(Path.GetTempPath(), $"tests-{Guid.NewGuid():N}.db");
+        builder.UseSetting("App:DbPath", path);
         builder.ConfigureTestServices(services =>
         {
             // fake code sender records the code for tests
             services.RemoveAll<ICodeSender>();
             services.AddSingleton<ICodeSender>(new FakeSender());
-            // fresh SQLite file per test-host run
-            var path = Path.Combine(Path.GetTempPath(), $"tests-{Guid.NewGuid():N}.db");
-            services.RemoveAll<SqliteConnection>();
-            services.AddSingleton(new SqliteConnection($"Data Source={path}"));
         });
     }
 

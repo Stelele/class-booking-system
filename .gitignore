@@ -25,3 +25,5 @@ infra/.env
 *.db-shm
 *.db-wal
 .DS_Store
+
+node_modules/

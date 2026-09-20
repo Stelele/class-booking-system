@@ -20,9 +20,10 @@ public static class DependencyInjection
     {
         var dbPath = config["App:DbPath"] ?? "data/booking.db";
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
-        var conn = new SqliteConnection($"Data Source={dbPath};Foreign Keys=True");
-        services.AddSingleton(conn);
-        services.AddDbContext<AppDbContext>((sp, o) => o.UseSqlite(sp.GetRequiredService<SqliteConnection>()));
+        // POOLED connections, one per DbContext instance — a shared singleton connection
+        // is not thread-safe and breaks under concurrent requests ("reader is closed")
+        var connString = $"Data Source={dbPath};Foreign Keys=True";
+        services.AddDbContext<AppDbContext>(o => o.UseSqlite(connString));
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
@@ -71,6 +72,8 @@ public static class DependencyInjection
 
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // WAL: readers don't block the writer — cheap concurrency for a 3-user app
+        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
         await db.Database.MigrateAsync();
         await Seeder.SeedAsync(db, scope.ServiceProvider.GetRequiredService<IConfiguration>());
     }

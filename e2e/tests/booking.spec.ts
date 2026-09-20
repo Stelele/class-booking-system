@@ -82,12 +82,26 @@ test('cancel and reschedule from my lessons', async ({ page }) => {
 
   await page.getByRole('link', { name: 'My Lessons' }).click()
   await page.waitForURL('**/mine')
-  // cancel everything studentb holds — whichever order the cards land in —
-  // until the empty state shows; the moved-from marker dies with its card
-  while (await page.getByRole('button', { name: 'Cancel' }).count()) {
+
+  // RESCHEDULE: the modal lists next month's bookable days — pick the first.
+  // A move keeps the card count constant but adds a "moved from" marker.
+  await page.getByRole('button', { name: 'Reschedule' }).last().click()
+  await page.locator('button[data-date]').first().click()
+  await expect(page.getByText('Moved!')).toBeVisible()
+  // "Moved!" renders before the list reload finishes — gate on the NEW DOM
+  await expect(page.getByText('moved from')).toBeVisible()
+
+  // CANCEL everything studentb holds. The settle wait avoids sampling the
+  // button count mid-re-render (a 0 there would skip the whole loop); the
+  // toHaveCount after each click auto-waits through the reload.
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(200)
+    const n = await page.getByRole('button', { name: 'Cancel' }).count()
+    if (n === 0) break
     await page.getByRole('button', { name: 'Cancel' }).first().click()
-    await expect(page.getByText('Cancelled.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(n - 1)
   }
+  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
   await expect(page.getByText('moved from')).toHaveCount(0)
   await expect(page.getByText('No upcoming lessons')).toBeVisible()
 })
