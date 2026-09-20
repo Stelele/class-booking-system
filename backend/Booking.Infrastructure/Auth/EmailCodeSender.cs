@@ -21,6 +21,11 @@ public sealed class EmailCodeSender(IConfiguration config, ILogger<EmailCodeSend
             subject: "Your booking login code",
             body: $"Hi {name}, your login code is {code}. It expires in 10 minutes.");
         using var client = new System.Net.Mail.SmtpClient(host, int.Parse(smtp["Port"] ?? "587"));
+        client.EnableSsl = true;
+        var user = smtp["User"];
+        var password = smtp["Password"];
+        if (!string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(password))
+            client.Credentials = new System.Net.NetworkCredential(user, password);
         await client.SendMailAsync(msg, ct);
     }
 }

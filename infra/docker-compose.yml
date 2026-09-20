@@ -14,6 +14,8 @@ services:
       - Smtp__Host=${SMTP_HOST}
       - Smtp__Port=${SMTP_PORT}
       - Smtp__From=${SMTP_FROM}
+      - Smtp__User=${SMTP_USER}
+      - Smtp__Password=${SMTP_PASSWORD}
       - App__Users__0__Email=${TEACHER_EMAIL}
       - App__Users__1__Email=${STUDENT_A_EMAIL}
       - App__Users__2__Email=${STUDENT_B_EMAIL}
