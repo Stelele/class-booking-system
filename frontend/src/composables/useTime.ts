@@ -11,14 +11,14 @@ export interface SlotDay {
 
 export function formatLocal(utcIso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit', minute: '2-digit', timeZone: timeZone ?? undefined,
+    hour: '2-digit', minute: '2-digit', ...(timeZone ? { timeZone } : {}),
   }).format(new Date(utcIso))
 }
 
 export function formatDayLocal(utcIso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short',
-    hour: '2-digit', minute: '2-digit', timeZone: timeZone ?? undefined,
+    hour: '2-digit', minute: '2-digit', ...(timeZone ? { timeZone } : {}),
   }).format(new Date(utcIso))
 }
 

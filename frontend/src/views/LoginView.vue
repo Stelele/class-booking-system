@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { requestCode, verifyCode } from '../composables/useAuth'
+import { ApiError } from '../composables/useApi'
 
 const email = ref('')
 const code = ref('')
@@ -20,7 +21,9 @@ async function step1() {
 async function step2() {
   busy.value = true; error.value = ''
   try { await verifyCode(email.value, code.value); router.push('/calendar') }
-  catch { error.value = 'Invalid or expired code' }
+  catch (e: unknown) {
+    error.value = e instanceof ApiError ? e.message : 'Invalid or expired code'
+  }
   finally { busy.value = false }
 }
 </script>
