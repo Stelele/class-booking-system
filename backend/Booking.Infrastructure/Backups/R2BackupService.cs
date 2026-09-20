@@ -13,7 +13,7 @@ using Booking.Infrastructure.Persistence;
 namespace Booking.Infrastructure.Backups;
 
 public sealed class R2BackupService(
-    IServiceProvider sp, IConfiguration config, ILogger<R2BackupService> log) : IBackupService
+    IServiceScopeFactory scopeFactory, IConfiguration config, ILogger<R2BackupService> log) : IBackupService
 {
     private string DbPath => config["App:DbPath"] ?? "data/booking.db";
 
@@ -56,7 +56,8 @@ public sealed class R2BackupService(
         File.Delete(tmp);
         File.Delete(tmpGz);
 
-        await using var db = sp.GetRequiredService<AppDbContext>();
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         db.BackupLogs.Add(new BackupLog { ObjectKey = key, SizeBytes = size });
         await db.SaveChangesAsync(ct);
         log.LogInformation("R2 backup uploaded: {Key} ({Size} bytes)", key, size);
@@ -64,7 +65,8 @@ public sealed class R2BackupService(
 
     public async Task<DateTime?> LastBackupUtcAsync(CancellationToken ct = default)
     {
-        await using var db = sp.GetRequiredService<AppDbContext>();
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var last = await db.BackupLogs.OrderByDescending(b => b.RanAtUtc).FirstOrDefaultAsync(ct);
         return last?.RanAtUtc;
     }
