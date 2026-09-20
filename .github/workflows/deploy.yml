@@ -22,7 +22,10 @@ jobs:
         run: mkdir -p ${{ github.workspace }}/infra/.pulumi-state
       - name: init stack
         working-directory: infra
-        run: pulumi stack init prod --non-interactive || pulumi stack select prod --non-interactive
+        run: |
+          pulumi stack init prod --non-interactive || true
+          pulumi config set class-booking:domain lessons.giftmugweni.com
+          pulumi stack select prod --non-interactive
       - name: pulumi up
         working-directory: infra
         run: pulumi up --stack prod --yes --non-interactive
