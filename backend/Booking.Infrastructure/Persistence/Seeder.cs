@@ -8,8 +8,8 @@ public static class Seeder
 {
     public static async Task SeedAsync(AppDbContext db, IConfiguration config)
     {
-        var section = config.GetSection("App:Users").Get<List<SeedUser>>() ?? [];
-        foreach (var seed in section)
+        var seeds = config.GetSection("App:Users").Get<List<SeedUser>>() ?? [];
+        foreach (var seed in seeds)
         {
             if (await db.Users.AnyAsync(u => u.Email == seed.Email)) continue;
             db.Users.Add(new User
@@ -24,5 +24,11 @@ public static class Seeder
         await db.SaveChangesAsync();
     }
 
-    private sealed record SeedUser(string Name, string Email, string? Phone, string Role);
+    public sealed class SeedUser
+    {
+        public string Name { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string? Phone { get; set; }
+        public string Role { get; set; } = "Student";
+    }
 }
