@@ -9,7 +9,6 @@ const month = ref(new Date().getMonth() + 1)
 const days = ref<SlotDay[]>([])
 const error = ref('')
 const booking = ref<SlotDay | null>(null)
-const bookingError = ref('')
 
 const stateClass: Record<SlotDay['state'], string> = {
   Bookable: 'bg-green-100 hover:bg-green-200 cursor-pointer',
@@ -28,10 +27,19 @@ const grid = computed(() => {
   return [...cells, ...days.value]
 })
 
+// stale-response guard: rapid month shifts must not let an older
+// response overwrite a newer one
+let loadSeq = 0
 async function load() {
+  const seq = ++loadSeq
   error.value = ''
-  try { days.value = await api<SlotDay[]>(`/slots?year=${year.value}&month=${month.value}`) }
-  catch (e: unknown) { error.value = e instanceof Error ? e.message : 'Load failed' }
+  try {
+    const d = await api<SlotDay[]>(`/slots?year=${year.value}&month=${month.value}`)
+    if (seq === loadSeq) days.value = d
+  }
+  catch (e: unknown) {
+    if (seq === loadSeq) error.value = e instanceof Error ? e.message : 'Load failed'
+  }
 }
 
 function shift(delta: number) {
@@ -40,7 +48,7 @@ function shift(delta: number) {
   load()
 }
 
-function openBooking(day: SlotDay) { if (day.canBook) { booking.value = day; bookingError.value = '' } }
+function openBooking(day: SlotDay) { if (day.canBook) booking.value = day }
 
 const monthLabel = computed(() =>
   new Date(year.value, month.value - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }))
@@ -58,7 +66,6 @@ onMounted(load)
       <UButton icon="i-lucide-chevron-right" variant="ghost" aria-label="Next month" @click="shift(1)" />
     </div>
     <p v-if="error" class="mb-3 text-red-500">{{ error }}</p>
-    <p v-if="bookingError" class="mb-3 text-red-500">{{ bookingError }}</p>
     <div class="grid grid-cols-7 gap-1 text-center text-xs">
       <div v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d" class="p-2 font-semibold">{{ d }}</div>
       <template v-for="(day, i) in grid" :key="i">
@@ -70,7 +77,7 @@ onMounted(load)
         </div>
       </template>
     </div>
-    <BookingModal v-model:open="booking" :day="booking" @booked="load(); bookingError = ''" @error="bookingError = $event" />
+    <BookingModal v-model:open="booking" :day="booking" @booked="load" />
 
     <UCard v-if="!combinedThisMonth" class="mt-6 text-sm text-gray-500">
       No combined lesson yet this month — the shared calendar keeps us honest.
