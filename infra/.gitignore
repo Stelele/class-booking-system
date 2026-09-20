@@ -1,0 +1,7 @@
+.pulumi/
+*.state
+.env
+
+# dotnet build output (root .gitignore only covers backend/)
+bin/
+obj/
