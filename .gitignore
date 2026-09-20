@@ -27,3 +27,8 @@ infra/.env
 .DS_Store
 
 node_modules/
+
+.env.local
+
+# pulumi local state
+infra/.pulumi-state/
