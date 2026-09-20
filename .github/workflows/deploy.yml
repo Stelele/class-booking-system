@@ -12,6 +12,7 @@ jobs:
     env:
       # ephemeral local state: our Commands re-run idempotently every deploy
       PULUMI_BACKEND_URL: file://${{ github.workspace }}/infra/.pulumi-state
+      PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -26,7 +27,6 @@ jobs:
         working-directory: infra
         run: pulumi up --stack prod --yes --non-interactive
         env:
-          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
           DO_HOST: ${{ secrets.DO_HOST }}
           DO_USER: ${{ secrets.DO_USER }}
           DO_SSH_KEY: ${{ secrets.DO_SSH_KEY }}
