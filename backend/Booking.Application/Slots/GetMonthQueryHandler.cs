@@ -40,7 +40,9 @@ public sealed class GetMonthQueryHandler(IAppDbContext db) : IQueryHandler<GetMo
                 StartUtc: LessonTime.StartUtc(d),
                 EndUtc: LessonTime.EndUtc(d),
                 State: state,
-                CanBook: state == DayState.Bookable,
+                // combined lessons are the point: an already-booked day stays bookable
+                // (that's how the second student joins) — only Sun/Blocked/Past/Cutoff gate
+                CanBook: state is DayState.Bookable or DayState.Booked or DayState.Combined,
                 Reason: reason,
                 StudentNames: studentIds.Select(id => names.GetValueOrDefault(id, "?")).ToList(),
                 MeetLink: slots.FirstOrDefault(s => s.Date == d)?.MeetLink));

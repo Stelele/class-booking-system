@@ -2,6 +2,7 @@
 backend/**/bin/
 backend/**/obj/
 backend/data/
+data/
 *.user
 
 # frontend

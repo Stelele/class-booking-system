@@ -42,6 +42,12 @@ app.MapIcs();
 app.MapBookings();
 app.MapAdmin();
 
+if (app.Environment.EnvironmentName == "E2E")
+{
+    app.MapGet("/api/test/latest-code/{email}", (string email) =>
+        Results.Json(new { code = Booking.Infrastructure.Auth.E2eCodeStore.Last }));
+}
+
 await app.MigrateAndSeedAsync();
 app.Run();
 

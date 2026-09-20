@@ -12,8 +12,8 @@ const booking = ref<SlotDay | null>(null)
 
 const stateClass: Record<SlotDay['state'], string> = {
   Bookable: 'bg-green-100 hover:bg-green-200 cursor-pointer',
-  Booked: 'bg-blue-100',
-  Combined: 'bg-purple-100',
+  Booked: 'bg-blue-100 hover:bg-blue-200 cursor-pointer',
+  Combined: 'bg-purple-100 hover:bg-purple-200 cursor-pointer',
   Sunday: 'bg-gray-100 text-gray-400',
   Blocked: 'bg-red-50 text-gray-400',
   Past: 'bg-gray-100 text-gray-300',

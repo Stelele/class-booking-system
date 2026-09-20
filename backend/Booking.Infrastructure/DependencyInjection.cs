@@ -9,6 +9,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Booking.Infrastructure;
@@ -36,6 +37,9 @@ public static class DependencyInjection
         {
             services.AddSingleton<IBackupService, NullBackupService>();
         }
+        // E2E hook: capture login codes in-process so tests can read them via /api/test/latest-code
+        if (config["E2E"] == "true")
+            services.Replace(ServiceDescriptor.Scoped<ICodeSender, E2eCodeSender>());
         return services;
     }
 
