@@ -13,13 +13,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '10.0.x' }
-      - name: prepare pulumi local state
+      - uses: pulumi/setup-pulumi@v2
+      - name: prepare ephemeral local state
         run: mkdir -p ${{ github.workspace }}/infra/.pulumi-state
-      - uses: pulumi/actions@v5
-        with:
-          command: up
-          stack-name: prod
-          work-dir: infra
+      - name: init stack
+        working-directory: infra
+        run: pulumi stack init prod --non-interactive || pulumi stack select prod --non-interactive
+      - name: pulumi up
+        working-directory: infra
+        run: pulumi up --stack prod --yes --non-interactive
         env:
           # ephemeral local state: our Commands re-run idempotently every deploy
           PULUMI_BACKEND_URL: file://${{ github.workspace }}/infra/.pulumi-state
