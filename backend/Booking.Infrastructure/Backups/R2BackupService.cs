@@ -48,8 +48,9 @@ public sealed class R2BackupService(
             await input.CopyToAsync(gzip, ct);
 
         var key = $"backups/{DateTime.UtcNow:yyyy/MM/dd/HHmmss}.db.gz";
-        using (var transfer = new TransferUtility(Client()))
-            await transfer.UploadAsync(tmpGz, config["R2:Bucket"], key, ct);
+        using var s3 = Client();
+        using var transfer = new TransferUtility(s3);
+        await transfer.UploadAsync(tmpGz, config["R2:Bucket"], key, ct);
 
         var size = new FileInfo(tmpGz).Length;
         File.Delete(tmp);
@@ -113,6 +114,7 @@ public sealed class R2BackupService(
         try
         {
             var (staged, key) = await StageRestore(ct);
+            ct.ThrowIfCancellationRequested(); // a timed-out restore must never swap under a live app
             AtomicSwap(staged);
             log.LogWarning("Startup restore from {Key} applied.", key);
             return true;

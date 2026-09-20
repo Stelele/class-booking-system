@@ -49,9 +49,14 @@ public static class DependencyInjection
             try
             {
                 var backups = app.Services.GetRequiredService<IBackupService>();
-                var restore = backups.TryRestoreAsync();
-                var done = await Task.WhenAny(restore, Task.Delay(TimeSpan.FromSeconds(30)));
-                if (done != restore)
+                // token fires at the deadline: in-flight S3 calls abort and a late stage
+                // never swaps (TryRestoreAsync checks the token before AtomicSwap)
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var restore = backups.TryRestoreAsync(timeoutCts.Token);
+                var done = await Task.WhenAny(restore, Task.Delay(Timeout.InfiniteTimeSpan, timeoutCts.Token));
+                if (done == restore)
+                    await restore; // observe failures into the catch below
+                else
                     app.Logger.LogWarning("Startup restore timed out; booting on a fresh DB.");
             }
             catch (Exception ex)

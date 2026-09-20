@@ -1,5 +1,4 @@
 using Booking.Application.Abstractions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -7,8 +6,7 @@ namespace Booking.Infrastructure.Backups;
 
 /// Nightly backup at 00:00 UTC (02:00 Africa/Harare — CAT is UTC+2 year-round).
 /// Startup restore lives in MigrateAndSeedAsync (must run before the first migration).
-public sealed class BackupWorker(
-    IBackupService backups, IConfiguration config, ILogger<BackupWorker> log) : BackgroundService
+public sealed class BackupWorker(IBackupService backups, ILogger<BackupWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
