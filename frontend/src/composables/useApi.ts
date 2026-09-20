@@ -4,10 +4,11 @@ export class UnauthorizedError extends Error {
 export class ApiError extends Error {}
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const { headers: extraHeaders, ...rest } = init ?? {}
   const res = await fetch(`/api${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    ...init,
+    ...rest,
+    headers: { 'Content-Type': 'application/json', ...(extraHeaders ?? {}) },
   })
   if (res.status === 401) throw new UnauthorizedError()
   if (!res.ok) {
