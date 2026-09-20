@@ -1,2 +1,2 @@
 config:
-  class-booking:domain: lessons.example.com   # CHANGE before first `pulumi up`
+  class-booking:domain: lessons.giftmugweni.com
