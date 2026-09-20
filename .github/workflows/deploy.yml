@@ -11,12 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
       - uses: pulumi/actions@v5
         with:
           command: up
           stack-name: prod
           work-dir: infra
         env:
+          # ephemeral local state: our Commands re-run idempotently every deploy
+          PULUMI_BACKEND_URL: file://${{ github.workspace }}/infra/.pulumi-state
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_PASSPHRASE }}
           DO_HOST: ${{ secrets.DO_HOST }}
           DO_USER: ${{ secrets.DO_USER }}
