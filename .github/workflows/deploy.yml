@@ -46,6 +46,8 @@ jobs:
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_API_KEY: ${{ secrets.EMAIL_API_KEY }}
+          EMAIL_FROM: no-reply@giftmugweni.com
           TEACHER_EMAIL: ${{ secrets.TEACHER_EMAIL }}
           STUDENT_A_EMAIL: ${{ secrets.STUDENT_A_EMAIL }}
           STUDENT_B_EMAIL: ${{ secrets.STUDENT_B_EMAIL }}

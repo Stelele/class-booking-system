@@ -16,6 +16,8 @@ services:
       - Smtp__From=${SMTP_FROM}
       - Smtp__User=${SMTP_USER}
       - Smtp__Password=${SMTP_PASSWORD}
+      - Email__Http__ApiKey=${EMAIL_API_KEY}
+      - Email__Http__From=${EMAIL_FROM}
       - App__Users__0__Email=${TEACHER_EMAIL}
       - App__Users__1__Email=${STUDENT_A_EMAIL}
       - App__Users__2__Email=${STUDENT_B_EMAIL}

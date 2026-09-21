@@ -1,5 +1,7 @@
 using Booking.Application.Abstractions;
 using Booking.Infrastructure.Auth;
+using Microsoft.Extensions.Options;
+using System.Net.Http.Headers;
 using Booking.Infrastructure.Backups;
 using Booking.Infrastructure.Identity;
 using Booking.Infrastructure.Meet;
@@ -28,7 +30,20 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
-        services.AddScoped<ICodeSender, EmailCodeSender>();
+        // Resend HTTPS API when configured (works behind DO's SMTP port blocks);
+        // classic SMTP otherwise (Gmail etc.)
+        services.Configure<EmailHttpOptions>(config.GetSection("Email:Http"));
+        services.AddHttpClient("Resend", (sp, client) =>
+        {
+            var opts = sp.GetRequiredService<IOptions<EmailHttpOptions>>().Value;
+            client.BaseAddress = new Uri("https://api.resend.com/");
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", opts.ApiKey);
+        });
+        if (!string.IsNullOrEmpty(config["Email:Http:ApiKey"]))
+            services.AddScoped<ICodeSender, ResendEmailSender>();
+        else
+            services.AddScoped<ICodeSender, EmailCodeSender>();
         if (!string.IsNullOrEmpty(config["R2:Bucket"]))
         {
             services.AddSingleton<IBackupService, R2BackupService>();
