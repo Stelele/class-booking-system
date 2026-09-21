@@ -1,7 +1,16 @@
+<script setup lang="ts">
+import type { ButtonProps } from '@nuxt/ui'
+
+const links: ButtonProps[] = [
+  { label: 'Get started', to: '/login', size: 'xl', icon: 'i-lucide-square-play' },
+]
+</script>
+
 <template>
-  <div class="py-16 text-center">
-    <h1 class="mb-3 text-4xl font-bold">Evening Programming Lessons</h1>
-    <p class="mb-8 text-gray-500">Daily 20:30 Harare · 2h · book when you're free, see when the crew is in.</p>
-    <UButton to="/login" size="xl">Get started</UButton>
-  </div>
+  <UPageHero
+    headline="Programming lessons"
+    title="Evening Programming Lessons"
+    description="Daily 20:30 Harare · 2 hours · book when you're free, see when the crew is in."
+    :links="links"
+  />
 </template>

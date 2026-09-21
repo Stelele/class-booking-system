@@ -27,16 +27,32 @@ async function book() {
 <template>
   <UModal :open="!!day" @update:open="open = null">
     <template #content>
-      <div class="p-6">
-        <h2 class="mb-2 text-lg font-bold">Book {{ day?.date }}</h2>
-        <p class="mb-1 text-gray-600">{{ day ? formatDayLocal(day.startUtc) : '' }}</p>
-        <p class="mb-4 text-sm text-gray-500">{{ day ? dualTimeLabel(day.startUtc) : '' }}</p>
-        <p v-if="error" class="mb-3 text-sm text-red-500">{{ error }}</p>
-        <div class="flex gap-2">
-          <UButton :loading="busy" @click="book">Confirm booking</UButton>
-          <UButton variant="soft" @click="open = null">Cancel</UButton>
-        </div>
-      </div>
+      <UCard variant="naked">
+        <template #header>
+          <div>
+            <h2 class="text-lg font-semibold text-highlighted">Book {{ day?.date }}</h2>
+            <p class="text-muted">{{ day ? formatDayLocal(day.startUtc) : '' }}</p>
+          </div>
+        </template>
+
+        <UAlert
+          color="neutral" variant="subtle" icon="i-lucide-clock"
+          :title="day ? dualTimeLabel(day.startUtc) : ''"
+        />
+
+        <UAlert
+          v-if="error"
+          color="error" variant="subtle" icon="i-lucide-circle-alert"
+          :title="error" class="mt-4"
+        />
+
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="soft" @click="open = null">Cancel</UButton>
+            <UButton icon="i-lucide-check" :loading="busy" @click="book">Confirm booking</UButton>
+          </div>
+        </template>
+      </UCard>
     </template>
   </UModal>
 </template>

@@ -119,7 +119,7 @@ test('admin blocks a day; student sees it unbookable; sunday never bookable', as
   await login(page2, 'studenta@example.com')
   await gotoNextMonth(page2)
   const cell = page2.locator(`[data-date="${date}"]`)
-  await expect(cell).toHaveClass(/bg-red-50/) // Blocked styling on the shared calendar
+  await expect(cell).toHaveClass(/bg-error/) // Blocked styling on the shared calendar
   await expect(cell).not.toHaveClass(/cursor-pointer/)
 
   // a Sunday in the displayed month is never bookable
