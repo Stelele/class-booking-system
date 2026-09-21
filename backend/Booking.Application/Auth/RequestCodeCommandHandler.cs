@@ -10,7 +10,9 @@ public sealed class RequestCodeCommandHandler(IAppDbContext db, ICodeSender send
     public async Task<bool> Handle(RequestCodeCommand c, CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == c.Email.Trim().ToLower(), ct);
-        if (user is null) return true; // do not reveal registered emails
+        // private 3-user app: a wrong address is a typo, not an attack —
+        // silent anti-enumeration would just look like a swallowed email
+        if (user is null) throw new AuthException("No account for that email — check for typos, or ask your teacher to add you.");
 
         var code = CodeGenerator.Generate6();
         db.AuthCodes.Add(new AuthCode

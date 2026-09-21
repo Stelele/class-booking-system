@@ -45,5 +45,16 @@ public class AuthFlowTests
         Assert.Equal(HttpStatusCode.Unauthorized, verify.StatusCode);
     }
 
+    [Fact]
+    public async Task Unknown_email_returns_clear_error_instead_of_silent_ok()
+    {
+        var client = _factory.CreateClient();
+
+        var res = await client.PostAsJsonAsync("/api/auth/request-code", new { email = "typo@example.com" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("No account", await res.Content.ReadAsStringAsync());
+    }
+
     public sealed record UserMe(Guid Id, string Name, string Email, string Role);
 }

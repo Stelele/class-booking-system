@@ -18,8 +18,15 @@ public static class AuthEndpoints
 
         group.MapPost("/request-code", async (RequestCodeRequest req, ISender sender) =>
         {
-            await sender.Send(new RequestCodeCommand(req.Email));
-            return Results.Ok(new { sent = true });
+            try
+            {
+                await sender.Send(new RequestCodeCommand(req.Email));
+                return Results.Ok(new { sent = true });
+            }
+            catch (AuthException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         });
 
         group.MapPost("/verify", async (VerifyCodeRequest req, ISender sender, HttpContext http) =>
