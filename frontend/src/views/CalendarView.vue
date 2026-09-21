@@ -7,17 +7,20 @@ import BookingModal from '../components/BookingModal.vue'
 const year = ref(new Date().getFullYear())
 const month = ref(new Date().getMonth() + 1)
 const days = ref<SlotDay[]>([])
+const loading = ref(true)
 const error = ref('')
 const booking = ref<SlotDay | null>(null)
 
+// theme tokens (dark-mode aware) — the occupancy grid itself is the one
+// documented exception: no Nuxt UI equivalent for an events calendar
 const stateClass: Record<SlotDay['state'], string> = {
-  Bookable: 'bg-green-100 hover:bg-green-200 cursor-pointer',
-  Booked: 'bg-blue-100 hover:bg-blue-200 cursor-pointer',
-  Combined: 'bg-purple-100 hover:bg-purple-200 cursor-pointer',
-  Sunday: 'bg-gray-100 text-gray-400',
-  Blocked: 'bg-red-50 text-gray-400',
-  Past: 'bg-gray-100 text-gray-300',
-  Cutoff: 'bg-yellow-50 text-gray-400',
+  Bookable: 'bg-success/10 hover:bg-success/20 cursor-pointer ring ring-success/15',
+  Booked: 'bg-info/10 hover:bg-info/20 cursor-pointer ring ring-info/15',
+  Combined: 'bg-primary/10 hover:bg-primary/20 cursor-pointer ring ring-primary/20',
+  Sunday: 'bg-elevated/50 text-dimmed',
+  Blocked: 'bg-error/10 text-error ring ring-error/15',
+  Past: 'bg-elevated/50 text-dimmed/60',
+  Cutoff: 'bg-warning/10 text-warning ring ring-warning/15',
 }
 
 const grid = computed(() => {
@@ -35,10 +38,10 @@ async function load() {
   error.value = ''
   try {
     const d = await api<SlotDay[]>(`/slots?year=${year.value}&month=${month.value}`)
-    if (seq === loadSeq) days.value = d
+    if (seq === loadSeq) { days.value = d; loading.value = false }
   }
   catch (e: unknown) {
-    if (seq === loadSeq) error.value = e instanceof Error ? e.message : 'Load failed'
+    if (seq === loadSeq) { error.value = e instanceof Error ? e.message : 'Load failed'; loading.value = false }
   }
 }
 
@@ -61,26 +64,53 @@ onMounted(load)
 <template>
   <div>
     <div class="mb-4 flex items-center justify-between">
-      <UButton icon="i-lucide-chevron-left" variant="ghost" aria-label="Previous month" @click="shift(-1)" />
-      <h1 class="text-xl font-bold">{{ monthLabel }}</h1>
-      <UButton icon="i-lucide-chevron-right" variant="ghost" aria-label="Next month" @click="shift(1)" />
+      <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" aria-label="Previous month" @click="shift(-1)" />
+      <h1 class="text-xl font-semibold text-highlighted">{{ monthLabel }}</h1>
+      <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" aria-label="Next month" @click="shift(1)" />
     </div>
-    <p v-if="error" class="mb-3 text-red-500">{{ error }}</p>
-    <div class="grid grid-cols-7 gap-1 text-center text-xs">
-      <div v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d" class="p-2 font-semibold">{{ d }}</div>
+
+    <UAlert
+      v-if="error"
+      color="error" variant="subtle" icon="i-lucide-circle-alert"
+      title="Couldn't load the calendar" :description="error"
+      class="mb-4"
+    />
+
+    <div v-if="loading" class="grid grid-cols-7 gap-1">
+      <USkeleton v-for="i in 35" :key="i" class="min-h-20" />
+    </div>
+
+    <div v-else class="grid grid-cols-7 gap-1 text-center text-sm">
+      <div v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d" class="p-2 text-xs font-semibold text-muted uppercase">{{ d }}</div>
       <template v-for="(day, i) in grid" :key="i">
         <div v-if="!day" />
-        <div v-else class="min-h-20 rounded-lg p-2" :class="stateClass[day.state]" :data-date="day.date" @click="openBooking(day)">
-          <div class="font-bold">{{ day.date.slice(-2) }}</div>
-          <div v-for="name in day.studentNames" :key="name" class="truncate text-[11px]">{{ name }}</div>
-          <div v-if="day.state === 'Combined'" class="text-[11px] font-semibold">combined</div>
-        </div>
+        <component
+          :is="day?.canBook ? 'button' : 'div'"
+          v-else
+          class="min-h-20 rounded-lg p-2 text-left"
+          :class="stateClass[day.state]"
+          :data-date="day.date"
+          @click="openBooking(day)"
+        >
+          <div class="font-semibold">{{ day.date.slice(-2) }}</div>
+          <div v-if="day.studentNames.length" class="mt-1 flex flex-col items-start gap-0.5">
+            <UBadge v-for="name in day.studentNames" :key="name" color="neutral" variant="subtle" size="sm" class="max-w-full truncate">
+              {{ name }}
+            </UBadge>
+          </div>
+          <UBadge v-if="day.state === 'Combined'" color="primary" variant="soft" size="sm" class="mt-1">combined</UBadge>
+        </component>
       </template>
     </div>
+
     <BookingModal v-model:open="booking" :day="booking" @booked="load" />
 
-    <UCard v-if="!combinedThisMonth" class="mt-6 text-sm text-gray-500">
-      No combined lesson yet this month — the shared calendar keeps us honest.
-    </UCard>
+    <UAlert
+      v-if="!loading && !combinedThisMonth"
+      color="info" variant="subtle" icon="i-lucide-users"
+      title="No combined lesson yet this month"
+      description="When you both book the same day it becomes a combined lesson — the shared calendar keeps us honest."
+      class="mt-6"
+    />
   </div>
 </template>
