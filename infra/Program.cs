@@ -147,9 +147,29 @@ return await Deployment.RunAsync(() =>
     // $scheme LITERAL — nothing expands on the runner or on the droplet.
     // The outer heredoc feeds the remote script to `ssh … 'bash -s'` via
     // stdin, avoiding single-quote nesting entirely.
+    //
+    // TLS: the 443 block is included whenever the certbot cert exists
+    // (checked on the droplet at apply time). WITHOUT this, every deploy
+    // would stomp certbot's 443 config back to HTTP-only and Cloudflare
+    // (Full mode) would fall through to the droplet's default vhost —
+    // i.e. the radius site taking over the lessons domain. Cert renewals
+    // only refresh cert FILES, so this static template stays valid.
     var nginxConf = $@"server {{
     listen 80;
     server_name {domain};
+
+    location /.well-known/acme-challenge/ {{ root /var/www/html; }}
+    location / {{ return 301 https://$host$request_uri; }}
+}}
+";
+    // appended by the remote script only when the cert exists (see below)
+    var tlsConf = $@"
+server {{
+    listen 443 ssl;
+    server_name {domain};
+
+    ssl_certificate /etc/letsencrypt/live/{domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{domain}/privkey.pem;
 
     location / {{
         proxy_pass http://127.0.0.1:8081;
@@ -166,6 +186,13 @@ return await Deployment.RunAsync(() =>
         $"cat > {vhostFile} <<'EOF'\n" +
         nginxConf +
         "EOF\n" +
+        // TLS block only when certbot has issued the cert — a fresh droplet
+        // must not fail nginx -t on missing cert files (chicken-and-egg)
+        $"if [ -d /etc/letsencrypt/live/{domain} ]; then\n" +
+        $"  cat >> {vhostFile} <<'EOF'\n" +
+        tlsConf +
+        "EOF\n" +
+        "fi\n" +
         $"ln -sf {vhostFile} {enabledLink}\n" +
         "nginx -t && systemctl reload nginx";
 
@@ -178,8 +205,9 @@ return await Deployment.RunAsync(() =>
     // ── outputs ─────────────────────────────────────────────────────────────
     return new Dictionary<string, object?>
     {
-        ["siteUrl"] = $"http://{domain}",
-        // Reminder surfaced in `pulumi up` output (see header comment for TLS):
-        ["tlsNote"] = $"After the first up, run once on the droplet: certbot --nginx -d {domain}",
+        ["siteUrl"] = $"https://{domain}",
+        // cert issuance (once per droplet): certbot --nginx -d {domain}
+        // renewals keep the same cert FILES, so this vhost template stays valid
+        ["tlsNote"] = $"If /etc/letsencrypt/live/{domain} is absent, run once on the droplet: certbot --nginx -d {domain}",
     };
 });
