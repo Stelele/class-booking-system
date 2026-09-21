@@ -1,22 +1,49 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { requestCode, verifyCode } from '../composables/useAuth'
 import { ApiError } from '../composables/useApi'
 
 const state = reactive({ email: '', code: '' })
 const sent = ref(false)
+const resent = ref(false)
 const error = ref('')
 const busy = ref(false)
 const router = useRouter()
+
+const RESEND_COOLDOWN = 30
+const resendIn = ref(0)
+let cooldownTimer: ReturnType<typeof setInterval> | undefined
+
+function startCooldown() {
+  resendIn.value = RESEND_COOLDOWN
+  cooldownTimer = setInterval(() => {
+    resendIn.value--
+    if (resendIn.value <= 0 && cooldownTimer) clearInterval(cooldownTimer)
+  }, 1000)
+}
+onBeforeUnmount(() => { if (cooldownTimer) clearInterval(cooldownTimer) })
 
 async function step1() {
   busy.value = true; error.value = ''
   try {
     await requestCode(state.email)
     sent.value = true
+    startCooldown()
   }
   catch (e: unknown) { error.value = e instanceof Error ? e.message : 'Failed to send code' }
+  finally { busy.value = false }
+}
+
+async function resend() {
+  if (resendIn.value > 0 || busy.value) return
+  busy.value = true; error.value = ''
+  try {
+    await requestCode(state.email)
+    resent.value = true
+    startCooldown()
+  }
+  catch (e: unknown) { error.value = e instanceof Error ? e.message : 'Failed to resend' }
   finally { busy.value = false }
 }
 
@@ -52,7 +79,9 @@ async function step2() {
         variant="subtle"
         icon="i-lucide-mail-check"
         title="Code sent"
-        :description="`We emailed a code to ${state.email}. It expires in 10 minutes.`"
+        :description="resent
+          ? `A new code was emailed to ${state.email}. The previous code still works until it expires.`
+          : `We emailed a code to ${state.email}. It expires in 10 minutes.`"
         class="mb-4"
       />
       <UForm :state="state" @submit="step2">
@@ -61,6 +90,15 @@ async function step2() {
         </UFormField>
         <UButton type="submit" :loading="busy" block class="mt-4">Verify</UButton>
       </UForm>
+      <UButton
+        color="neutral" variant="ghost" block
+        icon="i-lucide-refresh-cw"
+        :disabled="resendIn > 0 || busy"
+        class="mt-2"
+        @click="resend()"
+      >
+        {{ resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code' }}
+      </UButton>
     </template>
 
     <template v-if="error" #footer>
