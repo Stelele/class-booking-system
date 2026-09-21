@@ -75,8 +75,9 @@ return await Deployment.RunAsync(() =>
     var optionalKeys = new[]
     {
         "FIXED_MEET_LINK", "R2_ACCOUNT_ID", "R2_KEY_ID", "R2_SECRET", "R2_BUCKET",
-        "SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "TEACHER_EMAIL",
-        "STUDENT_A_EMAIL", "STUDENT_B_EMAIL",
+        "SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD",
+        "EMAIL_API_KEY", "EMAIL_FROM",
+        "TEACHER_EMAIL", "STUDENT_A_EMAIL", "STUDENT_B_EMAIL",
     };
 
     var envLines = new List<string> { $"GH_OWNER={ghOwner}" };
