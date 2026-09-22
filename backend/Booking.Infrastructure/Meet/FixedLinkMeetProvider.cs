@@ -12,3 +12,8 @@ public sealed class FixedLinkMeetProvider(IConfiguration config) : IMeetLinkProv
                 ?? throw new InvalidOperationException("App:FixedMeetLink is not configured."),
             null));
 }
+
+public sealed class FixedLinkEventSync : IMeetEventSync
+{
+    public Task DeleteEventAsync(string googleEventId, CancellationToken ct) => Task.CompletedTask;
+}

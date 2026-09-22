@@ -74,7 +74,9 @@ return await Deployment.RunAsync(() =>
     // compose; see infra/docker-compose.yml).
     var optionalKeys = new[]
     {
-        "FIXED_MEET_LINK", "R2_ACCOUNT_ID", "R2_KEY_ID", "R2_SECRET", "R2_BUCKET",
+        "FIXED_MEET_LINK", "MEET_PROVIDER", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REDIRECT_URI", "GOOGLE_TOKEN_KEY",
+        "R2_ACCOUNT_ID", "R2_KEY_ID", "R2_SECRET", "R2_BUCKET",
         "SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD",
         "EMAIL_API_KEY", "EMAIL_FROM",
         "TEACHER_EMAIL", "STUDENT_A_EMAIL", "STUDENT_B_EMAIL",

@@ -30,7 +30,20 @@ public static class DependencyInjection
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
-        services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
+        services.AddHttpClient("Google", c => c.BaseAddress = new Uri("https://www.googleapis.com/calendar/v3/"));
+        services.AddScoped<FixedLinkMeetProvider>();
+        var googleEnabled = (config["App:Meet:Provider"] ?? "fixed").Equals("google", StringComparison.OrdinalIgnoreCase);
+        if (googleEnabled)
+        {
+            services.AddScoped<IMeetLinkProvider, GoogleCalendarProvider>();
+            services.AddScoped<IMeetEventSync, GoogleCalendarProvider>();
+            services.AddHostedService<GoogleTokenRefreshWorker>();
+        }
+        else
+        {
+            services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
+            services.AddScoped<IMeetEventSync, FixedLinkEventSync>();
+        }
         // Task 6 (Slice 2A): minimal Google OAuth wiring so the connect flow + status
         // endpoint resolve. Task 7 owns the rest (calendar provider/sync, worker,
         // settings validation) but keeps/extends these three lines.

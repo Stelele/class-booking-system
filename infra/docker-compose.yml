@@ -7,6 +7,11 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - App__DbPath=/app/data/booking.db
       - App__FixedMeetLink=${FIXED_MEET_LINK}
+      - App__Meet__Provider=${MEET_PROVIDER:-fixed}
+      - Google__ClientId=${GOOGLE_CLIENT_ID}
+      - Google__ClientSecret=${GOOGLE_CLIENT_SECRET}
+      - Google__RedirectUri=${GOOGLE_REDIRECT_URI}
+      - Google__TokenKey=${GOOGLE_TOKEN_KEY}
       - R2__AccountId=${R2_ACCOUNT_ID}
       - R2__AccessKeyId=${R2_KEY_ID}
       - R2__SecretAccessKey=${R2_SECRET}
