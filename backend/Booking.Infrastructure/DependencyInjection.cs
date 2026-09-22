@@ -53,9 +53,20 @@ public static class DependencyInjection
             services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
             services.AddScoped<IMeetEventSync, FixedLinkEventSync>();
             // Fixed mode stores no real Google tokens, but the always-registered
-            // connector still requires a resolvable crypto service.
-            services.AddSingleton(new GoogleTokenCrypto(System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"))));
+            // connector still requires a resolvable crypto service. Lazy factory
+            // with environment gate: dev/test get a deterministic key, production
+            // fails LOUDLY rather than encrypting real tokens with a known key.
+            services.AddSingleton(_ =>
+            {
+                var fallbackB64 = config["Google:TokenKey"];
+                var isDev = string.Equals(config["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase)
+                    || config["E2E"] == "true";
+                byte[] fallbackKey = !string.IsNullOrEmpty(fallbackB64) ? Convert.FromBase64String(fallbackB64)
+                    : isDev ? System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"))
+                    : throw new InvalidOperationException("Google:TokenKey is not configured.");
+                return new GoogleTokenCrypto(fallbackKey);
+            });
         }
         // Google OAuth wiring: connect flow + status endpoint.
         services.Configure<GoogleOAuthSettings>(config.GetSection("Google"));
