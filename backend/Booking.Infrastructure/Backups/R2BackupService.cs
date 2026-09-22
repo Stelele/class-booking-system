@@ -49,8 +49,19 @@ public sealed class R2BackupService(
 
         var key = $"backups/{DateTime.UtcNow:yyyy/MM/dd/HHmmss}.db.gz";
         using var s3 = Client();
-        using var transfer = new TransferUtility(s3);
-        await transfer.UploadAsync(tmpGz, config["R2:Bucket"], key, ct);
+        // R2 rejects the SDK's default chunked STREAMING-*-TRAILER uploads —
+        // payload signing + default checksums must be disabled (same flags as
+        // erpnext-dashboard's R2StorageService); backups are tiny so the
+        // high-level TransferUtility isn't needed anyway
+        await s3.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = config["R2:Bucket"],
+            Key = key,
+            FilePath = tmpGz,
+            ContentType = "application/gzip",
+            DisablePayloadSigning = true,
+            DisableDefaultChecksumValidation = true,
+        }, ct);
 
         var size = new FileInfo(tmpGz).Length;
         File.Delete(tmp);
