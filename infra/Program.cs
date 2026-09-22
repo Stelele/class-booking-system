@@ -145,6 +145,26 @@ return await Deployment.RunAsync(() =>
         Triggers = { { "runStamp", runStamp } }, // re-pull :latest on every up
     }, new CustomResourceOptions { DependsOn = { writeEnv } });
 
+    // ── resource 3b: enable Google Calendar API (optional, no-op when unset) ─
+    // Skipped entirely unless GCP_PROJECT_ID + GCP_CREDENTIALS are provided
+    // (see docs/superpowers/specs/gcp-console-checklist.md). Requires gcloud on
+    // the runner; enablement is idempotent, so ephemeral state is safe.
+    var gcpProject = Environment.GetEnvironmentVariable("GCP_PROJECT_ID");
+    var gcpCreds = Environment.GetEnvironmentVariable("GCP_CREDENTIALS");
+    if (!string.IsNullOrWhiteSpace(gcpProject) && !string.IsNullOrWhiteSpace(gcpCreds))
+    {
+        var credFile = $"{runStamp}-gcp.json";
+        new LocalCommand("gcp-enable-calendar-api", new LocalCommandArgs
+        {
+            Create = string.Join(" && ",
+                $"printf '%s' "$GCP_CREDENTIALS" > /tmp/{credFile}",
+                $"CLOUDSDK_CORE_PROJECT={gcpProject} GOOGLE_APPLICATION_CREDENTIALS=/tmp/{credFile} " +
+                "gcloud services enable calendar-json.googleapis.com --quiet",
+                $"rm -f /tmp/{credFile}"),
+            Interpreter = { "/bin/bash", "-c" },
+        }, new CustomResourceOptions { DependsOn = { writeKey } });
+    }
+
     // ── resource 4: nginx-vhost ─────────────────────────────────────────────
     // Quoted heredocs (<<'EOF') keep $host / $proxy_add_x_forwarded_for /
     // $scheme LITERAL — nothing expands on the runner or on the droplet.
