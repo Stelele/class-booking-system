@@ -5,6 +5,6 @@ public sealed record GoogleTokenData(string RefreshTokenEncrypted, string Access
 public interface IGoogleTokenStore
 {
     Task<GoogleTokenData?> GetAsync(CancellationToken ct);
-    Task SaveAsync(GoogleTokenData token, CancellationToken ct);
+    Task SaveAsync(GoogleTokenData token, Guid userId, CancellationToken ct);
     Task FlagReconnectAsync(CancellationToken ct);
 }

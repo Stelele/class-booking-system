@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Booking.Application.Abstractions;
 using Booking.Domain.Slots;
@@ -38,8 +39,6 @@ public sealed class GoogleCalendarProvider(
             }
 
             var http = httpFactory.CreateClient("Google");
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", token.AccessToken);
 
             var tz = TZConvert.GetTimeZoneInfo(LessonTime.ZoneId);
             var startUtc = TimeZoneInfo.ConvertTimeToUtc(
@@ -63,8 +62,13 @@ public sealed class GoogleCalendarProvider(
                     },
                 },
             };
-            using var res = await http.PostAsJsonAsync(
-                "calendars/primary/events?conferenceDataVersion=1&sendUpdates=all", body, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post,
+                "calendars/primary/events?conferenceDataVersion=1&sendUpdates=all")
+            {
+                Content = JsonContent.Create(body),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+            using var res = await http.SendAsync(request, ct);
             res.EnsureSuccessStatusCode();
             var json = await res.Content.ReadFromJsonAsync<JsonObject>(ct);
             var meet = json?["conferenceData"]?["entryPoints"]?.AsArray()
@@ -75,7 +79,7 @@ public sealed class GoogleCalendarProvider(
                 throw new InvalidOperationException("Meet link missing in response.");
             return new MeetLinkResult(meet, id);
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or CryptographicException or TaskCanceledException)
         {
             // Never break a booking: fall back + flag reconnect on auth failures.
             log.LogWarning(ex, "Google Meet creation failed; using fixed link.");
@@ -94,13 +98,20 @@ public sealed class GoogleCalendarProvider(
             if (token is null || token.NeedsReconnect || string.IsNullOrEmpty(token.AccessToken))
                 return;
             var http = httpFactory.CreateClient("Google");
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", token.AccessToken);
-            using var res = await http.DeleteAsync(
-                $"calendars/primary/events/{Uri.EscapeDataString(googleEventId)}?sendUpdates=all", ct);
+            using var request = new HttpRequestMessage(HttpMethod.Delete,
+                $"calendars/primary/events/{Uri.EscapeDataString(googleEventId)}?sendUpdates=all");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+            using var res = await http.SendAsync(request, ct);
             if (res.StatusCode == HttpStatusCode.NotFound)
                 return; // already gone (e.g. deleted in Calendar UI)
-            res.EnsureSuccessStatusCode();
+            if (res.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                await tokens.FlagReconnectAsync(ct);
+                return; // booking already succeeded; never throw
+            }
+            if (!res.IsSuccessStatusCode)
+                log.LogWarning("Google event delete returned {Status} for {GoogleEventId}; continuing.",
+                    res.StatusCode, googleEventId);
         }
         catch (Exception ex)
         {
@@ -113,11 +124,22 @@ public sealed class GoogleCalendarProvider(
     /// A null RefreshToken in the refresh response keeps the old encrypted refresh token.
     private async Task<GoogleTokenData?> TryRefreshAsync(GoogleTokenData token, CancellationToken ct)
     {
+        string refreshToken;
+        try
+        {
+            refreshToken = crypto.Decrypt(token.RefreshTokenEncrypted);
+        }
+        catch (CryptographicException ex)
+        {
+            await tokens.FlagReconnectAsync(ct);
+            throw new InvalidOperationException("Stored Google token is unreadable; reconnect required.", ex);
+        }
+
         try
         {
             var o = opts.Value;
             var refreshed = await oauth.RefreshAsync(
-                crypto.Decrypt(token.RefreshTokenEncrypted), o.ClientId, o.ClientSecret, ct);
+                refreshToken, o.ClientId, o.ClientSecret, ct);
             var updated = token with
             {
                 AccessToken = refreshed.AccessToken,
@@ -126,14 +148,29 @@ public sealed class GoogleCalendarProvider(
                     ? token.RefreshTokenEncrypted
                     : crypto.Encrypt(refreshed.RefreshToken),
             };
-            await tokens.SaveAsync(updated, ct);
+            // Refresh runs on an existing row, so its UserId is preserved by the
+            // store's update path; Guid.Empty is only a fallback lookup key for the
+            // duplicate-race retry. Fresh connects (Task 6) supply the real user id.
+            await tokens.SaveAsync(updated, Guid.Empty, ct);
             return updated;
         }
-        catch (HttpRequestException ex)
+        catch (HttpRequestException ex) when (IsAuthLoss(ex))
         {
-            log.LogWarning(ex, "Google token refresh failed; flagging reconnect.");
+            log.LogWarning(ex, "Google token refresh rejected; flagging reconnect.");
             await tokens.FlagReconnectAsync(ct);
             return null;
         }
+        catch (HttpRequestException ex)
+        {
+            log.LogWarning(ex, "Transient Google token refresh failure; using fixed link without flagging reconnect.");
+            return null;
+        }
     }
+
+    /// Auth loss = 401/403, or 400 carrying invalid_grant. Transient
+    /// (429/5xx/no status) must NOT flag reconnect.
+    private static bool IsAuthLoss(HttpRequestException ex) =>
+        ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+        || (ex.StatusCode is HttpStatusCode.BadRequest
+            && ex.Message.Contains("invalid_grant", StringComparison.Ordinal));
 }

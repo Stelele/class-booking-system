@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Booking.Infrastructure.Google;
 
 /// EF implementation: single row for the teacher (Admin). UserId recorded for audit.
-public sealed class EfGoogleTokenStore(IAppDbContext db, ICurrentUser user) : IGoogleTokenStore
+public sealed class EfGoogleTokenStore(IAppDbContext db) : IGoogleTokenStore
 {
     private const string CalendarScope = "https://www.googleapis.com/auth/calendar.events";
 
@@ -17,18 +17,19 @@ public sealed class EfGoogleTokenStore(IAppDbContext db, ICurrentUser user) : IG
             : new GoogleTokenData(row.RefreshTokenEncrypted, row.AccessToken ?? "", row.ExpiryUtc, row.NeedsReconnect);
     }
 
-    public async Task SaveAsync(GoogleTokenData token, CancellationToken ct)
+    public async Task SaveAsync(GoogleTokenData token, Guid userId, CancellationToken ct)
     {
         var row = await db.GoogleTokens.OrderByDescending(t => t.Id).FirstOrDefaultAsync(ct);
         if (row is null)
         {
             row = new GoogleToken
             {
-                UserId = user.UserId,
+                UserId = userId,
                 RefreshTokenEncrypted = token.RefreshTokenEncrypted,
                 AccessToken = token.AccessToken,
                 ExpiryUtc = token.ExpiryUtc,
                 Scope = CalendarScope,
+                NeedsReconnect = token.NeedsReconnect,
             };
             db.GoogleTokens.Add(row);
         }
@@ -39,8 +40,17 @@ public sealed class EfGoogleTokenStore(IAppDbContext db, ICurrentUser user) : IG
             row.ExpiryUtc = token.ExpiryUtc;
             row.NeedsReconnect = token.NeedsReconnect;
         }
-
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            row = await db.GoogleTokens.FirstAsync(t => t.UserId == userId, ct);
+            row.RefreshTokenEncrypted = token.RefreshTokenEncrypted;
+            row.AccessToken = token.AccessToken;
+            row.ExpiryUtc = token.ExpiryUtc;
+            row.NeedsReconnect = token.NeedsReconnect;
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     public async Task FlagReconnectAsync(CancellationToken ct)

@@ -34,7 +34,7 @@ public class GoogleCalendarProviderTests
 
         public Task<GoogleTokenData?> GetAsync(CancellationToken ct) => Task.FromResult(Current);
 
-        public Task SaveAsync(GoogleTokenData token, CancellationToken ct)
+        public Task SaveAsync(GoogleTokenData token, Guid userId, CancellationToken ct)
         {
             Current = token;
             return Task.CompletedTask;
@@ -50,6 +50,10 @@ public class GoogleCalendarProviderTests
 
     private string? _body;
     private string? _uri;
+
+    // Shared by Build and the refresh tests so seeded RefreshTokenEncrypted
+    // values decrypt with the same key the provider uses.
+    private static readonly byte[] TestKey = RandomNumberGenerator.GetBytes(32);
 
     private GoogleCalendarProvider Build(Func<HttpRequestMessage, HttpResponseMessage> fn, FakeStore store)
     {
@@ -73,7 +77,7 @@ public class GoogleCalendarProviderTests
             new GoogleOAuthClient(oauthHttp),
             Options.Create(new GoogleOAuthSettings
                 { ClientId = "cid", ClientSecret = "csec", RedirectUri = "https://x/cb" }),
-            new GoogleTokenCrypto(RandomNumberGenerator.GetBytes(32)),
+            new GoogleTokenCrypto(TestKey),
             NullLogger<GoogleCalendarProvider>.Instance,
             new FixedLinkMeetProvider(config));
     }
@@ -130,5 +134,117 @@ public class GoogleCalendarProviderTests
 
         Assert.Null(ex);
         Assert.Contains("evt_gone", _uri ?? "");
+    }
+
+    [Fact]
+    public async Task Expired_token_triggers_refresh_then_insert()
+    {
+        var crypto = new GoogleTokenCrypto(TestKey);
+        var store = new FakeStore(new GoogleTokenData(
+            crypto.Encrypt("refresh-token"), "ya29.stale", DateTime.UtcNow.AddMinutes(-1), false));
+        var sut = Build(req =>
+        {
+            if (req.RequestUri?.Host == "oauth2.googleapis.com")
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        JsonSerializer.Serialize(new { access_token = "ya29.fresh", expires_in = 3600 }),
+                        Encoding.UTF8, "application/json"),
+                };
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(new
+                    {
+                        id = "evt_456",
+                        conferenceData = new
+                        {
+                            entryPoints = new[]
+                                { new { entryPointType = "video", uri = "https://meet.google.com/new-meet-link" } }
+                        }
+                    }),
+                    Encoding.UTF8, "application/json"),
+            };
+        }, store);
+
+        var result = await sut.GetOrCreateLinkAsync(new DateOnly(2026, 9, 30));
+
+        Assert.Equal("https://meet.google.com/new-meet-link", result.MeetLink);
+        Assert.Equal("evt_456", result.GoogleEventId);
+        Assert.Equal("ya29.fresh", store.Current?.AccessToken);
+        Assert.False(store.ReconnectFlagged);
+    }
+
+    [Fact]
+    public async Task Invalid_grant_refresh_falls_back_and_flags()
+    {
+        var crypto = new GoogleTokenCrypto(TestKey);
+        var store = new FakeStore(new GoogleTokenData(
+            crypto.Encrypt("refresh-token"), "ya29.stale", DateTime.UtcNow.AddMinutes(-1), false));
+        var sut = Build(req =>
+        {
+            if (req.RequestUri?.Host == "oauth2.googleapis.com")
+                return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                {
+                    Content = new StringContent(
+                        "{\"error\":\"invalid_grant\"}", Encoding.UTF8, "application/json"),
+                };
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(new
+                    {
+                        id = "evt_should_not_be_used",
+                        conferenceData = new
+                        {
+                            entryPoints = new[]
+                                { new { entryPointType = "video", uri = "https://meet.google.com/should-not-be-used" } }
+                        }
+                    }),
+                    Encoding.UTF8, "application/json"),
+            };
+        }, store);
+
+        var result = await sut.GetOrCreateLinkAsync(new DateOnly(2026, 9, 30));
+
+        Assert.Equal("https://meet.google.com/fixed-link", result.MeetLink);
+        Assert.Null(result.GoogleEventId);
+        Assert.True(store.ReconnectFlagged);
+    }
+
+    [Fact]
+    public async Task Transient_500_does_not_flag_reconnect()
+    {
+        var crypto = new GoogleTokenCrypto(TestKey);
+        var store = new FakeStore(new GoogleTokenData(
+            crypto.Encrypt("refresh-token"), "ya29.stale", DateTime.UtcNow.AddMinutes(-1), false));
+        var sut = Build(req =>
+        {
+            if (req.RequestUri?.Host == "oauth2.googleapis.com")
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent("transient outage", Encoding.UTF8, "application/json"),
+                };
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(new
+                    {
+                        id = "evt_should_not_be_used",
+                        conferenceData = new
+                        {
+                            entryPoints = new[]
+                                { new { entryPointType = "video", uri = "https://meet.google.com/should-not-be-used" } }
+                        }
+                    }),
+                    Encoding.UTF8, "application/json"),
+            };
+        }, store);
+
+        var result = await sut.GetOrCreateLinkAsync(new DateOnly(2026, 9, 30));
+
+        Assert.Equal("https://meet.google.com/fixed-link", result.MeetLink);
+        Assert.Null(result.GoogleEventId);
+        Assert.False(store.ReconnectFlagged);
     }
 }
