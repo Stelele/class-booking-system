@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Booking.Application.Bookings;
 
-public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet)
+public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet, IMeetEventSync sync)
     : ICommandHandler<RescheduleBookingCommand, BookingDto>
 {
     public async Task<BookingDto> Handle(RescheduleBookingCommand c, CancellationToken ct)
@@ -26,6 +26,7 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             b.Status == BookingStatus.Active && b.Slot.Date == c.NewDate, ct);
         if (clash) throw new BookingException("You already have a booking on the new day.");
 
+        var oldGoogleId = booking.Slot.GoogleEventId;
         var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.NewDate, ct);
         if (slot is null)
         {
@@ -35,6 +36,8 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
 
         if (slot.MeetLink is null)
         {
+            if (oldGoogleId is not null)
+                await sync.DeleteEventAsync(oldGoogleId, ct);
             var link = await meet.GetOrCreateLinkAsync(c.NewDate, ct);
             slot.MeetLink = link.MeetLink;
             slot.GoogleEventId = link.GoogleEventId;

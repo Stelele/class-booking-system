@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Booking.Application.Bookings;
 
-public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser user)
+public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetEventSync sync)
     : ICommandHandler<CancelBookingCommand, bool>
 {
     public async Task<bool> Handle(CancelBookingCommand c, CancellationToken ct)
@@ -16,9 +16,12 @@ public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser u
         if (booking.StudentId != user.UserId && !user.IsAdmin)
             throw new BookingException("You can only cancel your own bookings.");
 
+        var googleId = booking.Slot.GoogleEventId;
         booking.Status = BookingStatus.Cancelled;
         booking.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (googleId is not null)
+            await sync.DeleteEventAsync(googleId, ct);
         return true;
     }
 }
