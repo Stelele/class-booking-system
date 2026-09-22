@@ -12,10 +12,11 @@ public class GoogleOAuthClientTests
             => Task.FromResult(fn(r));
     }
 
-    private static string? _capturedBody;
-    private static GoogleOAuthClient Client() => new(new HttpClient(new StubHandler(r =>
+    private string? _capturedBody;
+   
+    private GoogleOAuthClient Client() => new(new HttpClient(new StubHandler(r =>
     {
-        _capturedBody = r.Content!.ReadAsStringAsync().Result;
+        _capturedBody = r.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
         return new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(
@@ -33,6 +34,8 @@ public class GoogleOAuthClientTests
         Assert.Equal("1//refresh-xyz", tokens.RefreshToken);
         Assert.Contains("grant_type=authorization_code", _capturedBody);
         Assert.Contains("code=auth-code-123", _capturedBody);
+        var skew = (tokens.ExpiryUtc - DateTime.UtcNow).TotalSeconds;
+        Assert.InRange(skew, 3500, 3600);
     }
 
     [Fact]
