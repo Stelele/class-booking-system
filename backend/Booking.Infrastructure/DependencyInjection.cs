@@ -46,10 +46,12 @@ public static class DependencyInjection
         services.AddSingleton<GoogleTokenCrypto>(_ =>
         {
             var b64 = config["Google:TokenKey"];
-            var key = string.IsNullOrEmpty(b64)
-                ? System.Security.Cryptography.SHA256.HashData(
+            var isDev = string.Equals(config["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase)
+                || config["E2E"] == "true";
+            byte[] key = !string.IsNullOrEmpty(b64) ? Convert.FromBase64String(b64)
+                : isDev ? System.Security.Cryptography.SHA256.HashData(
                     System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"))
-                : Convert.FromBase64String(b64);
+                : throw new InvalidOperationException("Google:TokenKey is not configured.");
             return new GoogleTokenCrypto(key);
         });
         // Resend HTTPS API when configured (works behind DO's SMTP port blocks);
