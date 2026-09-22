@@ -16,6 +16,7 @@ public interface IAppDbContext
     DbSet<BlockedDay> BlockedDays { get; }
     DbSet<AuthCode> AuthCodes { get; }
     DbSet<BackupLog> BackupLogs { get; }
+    DbSet<GoogleToken> GoogleTokens { get; }
     ChangeTracker ChangeTracker { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
