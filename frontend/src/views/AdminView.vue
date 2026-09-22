@@ -9,10 +9,21 @@ const days = ref<SlotDay[]>([])
 const loading = ref(true)
 const lastBackup = ref<string | null>(null)
 const restoring = ref(false)
+const backingUp = ref(false)
 const confirmOpen = ref(false)
 const error = ref('')
 const restoreMessage = ref('')
 const restoreError = ref(false)
+
+async function backupNow() {
+  backingUp.value = true
+  try {
+    const res = await api<{ lastBackupUtc: string }>('/admin/backups/run', { method: 'POST' })
+    lastBackup.value = res.lastBackupUtc
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Backup failed'
+  } finally { backingUp.value = false }
+}
 
 // theme tokens; occupancy grid = the documented custom exception
 const cellClass: Record<SlotDay['state'], string> = {
@@ -135,9 +146,14 @@ onMounted(() => { load(); loadBackup() })
       />
 
       <template #footer>
-        <UButton color="error" variant="soft" icon="i-lucide-database-backup" :loading="restoring" @click="confirmOpen = true">
-          Restore latest backup
-        </UButton>
+        <div class="flex flex-wrap justify-end gap-2">
+          <UButton color="neutral" variant="soft" icon="i-lucide-cloud-upload" :loading="backingUp" @click="backupNow">
+            Back up now
+          </UButton>
+          <UButton color="error" variant="soft" icon="i-lucide-database-backup" :loading="restoring" @click="confirmOpen = true">
+            Restore latest backup
+          </UButton>
+        </div>
       </template>
     </UCard>
 
