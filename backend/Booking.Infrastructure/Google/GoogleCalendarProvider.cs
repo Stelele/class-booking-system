@@ -27,16 +27,9 @@ public sealed class GoogleCalendarProvider(
     {
         try
         {
-            var token = await tokens.GetAsync(ct);
-            if (token is null || token.NeedsReconnect || string.IsNullOrEmpty(token.AccessToken))
+            var token = await EnsureFreshTokenAsync(ct);
+            if (token is null)
                 return await fallback.GetOrCreateLinkAsync(date, ct);
-
-            if (token.ExpiryUtc <= DateTime.UtcNow.AddMinutes(5))
-            {
-                token = await TryRefreshAsync(token, ct);
-                if (token is null)
-                    return await fallback.GetOrCreateLinkAsync(date, ct);
-            }
 
             var http = httpFactory.CreateClient("Google");
 
@@ -94,8 +87,8 @@ public sealed class GoogleCalendarProvider(
     {
         try
         {
-            var token = await tokens.GetAsync(ct);
-            if (token is null || token.NeedsReconnect || string.IsNullOrEmpty(token.AccessToken))
+            var token = await EnsureFreshTokenAsync(ct);
+            if (token is null)
                 return;
             var http = httpFactory.CreateClient("Google");
             using var request = new HttpRequestMessage(HttpMethod.Delete,
@@ -117,6 +110,20 @@ public sealed class GoogleCalendarProvider(
         {
             log.LogWarning(ex, "Google event delete failed for {GoogleEventId}; continuing.", googleEventId);
         }
+    }
+
+    /// Shared ensure-fresh-token helper for the insert and delete paths: returns
+    /// null when there is no usable token (missing, NeedsReconnect, empty, or
+    /// refresh failed) so callers skip/fall back; otherwise a fresh access token.
+    private async Task<GoogleTokenData?> EnsureFreshTokenAsync(CancellationToken ct)
+    {
+        var token = await tokens.GetAsync(ct);
+        if (token is null || token.NeedsReconnect || string.IsNullOrEmpty(token.AccessToken))
+            return null;
+
+        if (token.ExpiryUtc <= DateTime.UtcNow.AddMinutes(5))
+            token = await TryRefreshAsync(token, ct);
+        return token;
     }
 
     /// Refreshes an expiring token. Returns null (after flagging reconnect + logging)
