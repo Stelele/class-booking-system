@@ -33,7 +33,12 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             db.Slots.Add(slot);
         }
 
-        slot.MeetLink ??= await meet.GetOrCreateLinkAsync(c.NewDate, ct);
+        if (slot.MeetLink is null)
+        {
+            var link = await meet.GetOrCreateLinkAsync(c.NewDate, ct);
+            slot.MeetLink = link.MeetLink;
+            slot.GoogleEventId = link.GoogleEventId;
+        }
 
         var originalDate = booking.OriginalDate ?? booking.Slot.Date;
         booking.OriginalDate = originalDate;
