@@ -15,6 +15,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<BookingEntity> Bookings => Set<BookingEntity>();
     public DbSet<BlockedDay> BlockedDays => Set<BlockedDay>();
     public DbSet<AuthCode> AuthCodes => Set<AuthCode>();
+    public DbSet<GoogleToken> GoogleTokens => Set<GoogleToken>();
     public DbSet<BackupLog> BackupLogs => Set<BackupLog>();
 
     protected override void OnModelCreating(ModelBuilder mb)
