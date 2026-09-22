@@ -10,8 +10,11 @@ public sealed class GoogleOAuthStateStore : IGoogleOAuthStateStore
 
     public string Issue()
     {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var kv in _states)
+            if (kv.Value <= now) _states.TryRemove(kv.Key, out _);
         var state = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24));
-        _states[state] = DateTimeOffset.UtcNow.AddMinutes(10);
+        _states[state] = now.AddMinutes(10);
         return state;
     }
 

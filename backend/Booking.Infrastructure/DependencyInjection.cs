@@ -36,6 +36,7 @@ public static class DependencyInjection
         // settings validation) but keeps/extends these three lines.
         services.Configure<GoogleOAuthSettings>(config.GetSection("Google"));
         services.AddSingleton<IGoogleOAuthStateStore, GoogleOAuthStateStore>();
+        // Single-instance only; replace with distributed cache if ever scaling horizontally
         services.AddScoped<IGoogleAccountConnector, GoogleAccountConnector>();
         services.AddScoped<IGoogleTokenStore, EfGoogleTokenStore>();
         // Typed token client (Task 7 keeps; base address is the stable Google endpoint).

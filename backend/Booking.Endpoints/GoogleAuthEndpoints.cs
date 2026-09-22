@@ -1,5 +1,6 @@
 using Booking.Application.Abstractions;
 using Booking.Application.Auth;
+using Microsoft.Extensions.Logging;
 
 namespace Booking.Endpoints;
 
@@ -13,17 +14,22 @@ public static class GoogleAuthEndpoints
             return Results.Redirect(url);
         }).RequireAuthorization(p => p.RequireRole("Admin"));
 
-        app.MapGet("/api/auth/google/callback", async (string? code, string? state, ISender sender) =>
+        app.MapGet("/api/auth/google/callback", async (string? code, string? state, ISender sender, ILoggerFactory loggerFactory) =>
         {
+            var log = loggerFactory.CreateLogger("GoogleAuth");
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
+            {
+                log.LogWarning("Google OAuth callback missing code or state.");
                 return Results.Redirect("/admin?google=error");
+            }
             try
             {
                 await sender.Send(new CompleteGoogleOAuthCommand(code, state));
                 return Results.Redirect("/admin?google=connected");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                log.LogWarning(ex, "Google OAuth callback failed.");
                 return Results.Redirect("/admin?google=error");
             }
         }).RequireAuthorization(p => p.RequireRole("Admin"));
