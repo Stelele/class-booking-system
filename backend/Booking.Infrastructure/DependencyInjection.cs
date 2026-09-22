@@ -61,10 +61,18 @@ public static class DependencyInjection
                 var fallbackB64 = config["Google:TokenKey"];
                 var isDev = string.Equals(config["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase)
                     || config["E2E"] == "true";
-                byte[] fallbackKey = !string.IsNullOrEmpty(fallbackB64) ? Convert.FromBase64String(fallbackB64)
-                    : isDev ? System.Security.Cryptography.SHA256.HashData(
-                        System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"))
-                    : throw new InvalidOperationException("Google:TokenKey is not configured.");
+                byte[] fallbackKey;
+                if (string.IsNullOrEmpty(fallbackB64))
+                {
+                    if (!isDev) throw new InvalidOperationException("Google:TokenKey is not configured.");
+                    fallbackKey = System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"));
+                }
+                else
+                {
+                    try { fallbackKey = Convert.FromBase64String(fallbackB64); }
+                    catch (FormatException ex) { throw new InvalidOperationException("Google:TokenKey is not valid base64.", ex); }
+                }
                 return new GoogleTokenCrypto(fallbackKey);
             });
         }
