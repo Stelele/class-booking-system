@@ -22,6 +22,7 @@ public sealed class EfGoogleTokenStore(IAppDbContext db) : IGoogleTokenStore
         var row = await db.GoogleTokens.OrderByDescending(t => t.Id).FirstOrDefaultAsync(ct);
         if (row is null)
         {
+            if (userId == Guid.Empty) throw new InvalidOperationException("Cannot create a token row without a user id.");
             row = new GoogleToken
             {
                 UserId = userId,

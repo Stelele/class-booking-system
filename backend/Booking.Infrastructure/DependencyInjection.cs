@@ -38,36 +38,34 @@ public static class DependencyInjection
             services.AddScoped<IMeetLinkProvider, GoogleCalendarProvider>();
             services.AddScoped<IMeetEventSync, GoogleCalendarProvider>();
             services.AddHostedService<GoogleTokenRefreshWorker>();
+            var tokenKeyB64 = config["Google:TokenKey"];
+            if (string.IsNullOrEmpty(tokenKeyB64))
+                throw new InvalidOperationException("Google:TokenKey is not configured.");
+            byte[] tokenKey;
+            try { tokenKey = Convert.FromBase64String(tokenKeyB64); }
+            catch (FormatException ex) { throw new InvalidOperationException("Google:TokenKey is not valid base64.", ex); }
+            if (tokenKey.Length != 32)
+                throw new InvalidOperationException("Google:TokenKey must decode to exactly 32 bytes.");
+            services.AddSingleton(new GoogleTokenCrypto(tokenKey));
         }
         else
         {
             services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
             services.AddScoped<IMeetEventSync, FixedLinkEventSync>();
+            // Fixed mode stores no real Google tokens, but the always-registered
+            // connector still requires a resolvable crypto service.
+            services.AddSingleton(new GoogleTokenCrypto(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"))));
         }
-        // Task 6 (Slice 2A): minimal Google OAuth wiring so the connect flow + status
-        // endpoint resolve. Task 7 owns the rest (calendar provider/sync, worker,
-        // settings validation) but keeps/extends these three lines.
+        // Google OAuth wiring: connect flow + status endpoint.
         services.Configure<GoogleOAuthSettings>(config.GetSection("Google"));
         services.AddSingleton<IGoogleOAuthStateStore, GoogleOAuthStateStore>();
         // Single-instance only; replace with distributed cache if ever scaling horizontally
         services.AddScoped<IGoogleAccountConnector, GoogleAccountConnector>();
         services.AddScoped<IGoogleTokenStore, EfGoogleTokenStore>();
-        // Typed token client (Task 7 keeps; base address is the stable Google endpoint).
+        // Typed token client (base address is the stable Google endpoint).
         services.AddHttpClient<GoogleOAuthClient>(c =>
             c.BaseAddress = new Uri("https://oauth2.googleapis.com/"));
-        // Refresh-token encryption (Task 7 keeps; dev/test fallback is a deterministic
-        // local key — real deployments must set Google:TokenKey, see Task 7 validation).
-        services.AddSingleton<GoogleTokenCrypto>(_ =>
-        {
-            var b64 = config["Google:TokenKey"];
-            var isDev = string.Equals(config["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase)
-                || config["E2E"] == "true";
-            byte[] key = !string.IsNullOrEmpty(b64) ? Convert.FromBase64String(b64)
-                : isDev ? System.Security.Cryptography.SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"))
-                : throw new InvalidOperationException("Google:TokenKey is not configured.");
-            return new GoogleTokenCrypto(key);
-        });
         // Resend HTTPS API when configured (works behind DO's SMTP port blocks);
         // classic SMTP otherwise (Gmail etc.)
         services.Configure<EmailHttpOptions>(config.GetSection("Email:Http"));
