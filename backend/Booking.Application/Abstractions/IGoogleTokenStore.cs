@@ -1,4 +1,4 @@
-namespace Booking.Infrastructure.Google;
+namespace Booking.Application.Abstractions;
 
 public sealed record GoogleTokenData(string RefreshTokenEncrypted, string AccessToken, DateTime ExpiryUtc, bool NeedsReconnect);
 

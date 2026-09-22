@@ -1,5 +1,6 @@
 using Booking.Application.Abstractions;
 using Booking.Infrastructure.Auth;
+using Booking.Infrastructure.Google;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
 using Booking.Infrastructure.Backups;
@@ -30,6 +31,27 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
+        // Task 6 (Slice 2A): minimal Google OAuth wiring so the connect flow + status
+        // endpoint resolve. Task 7 owns the rest (calendar provider/sync, worker,
+        // settings validation) but keeps/extends these three lines.
+        services.Configure<GoogleOAuthSettings>(config.GetSection("Google"));
+        services.AddSingleton<IGoogleOAuthStateStore, GoogleOAuthStateStore>();
+        services.AddScoped<IGoogleAccountConnector, GoogleAccountConnector>();
+        services.AddScoped<IGoogleTokenStore, EfGoogleTokenStore>();
+        // Typed token client (Task 7 keeps; base address is the stable Google endpoint).
+        services.AddHttpClient<GoogleOAuthClient>(c =>
+            c.BaseAddress = new Uri("https://oauth2.googleapis.com/"));
+        // Refresh-token encryption (Task 7 keeps; dev/test fallback is a deterministic
+        // local key — real deployments must set Google:TokenKey, see Task 7 validation).
+        services.AddSingleton<GoogleTokenCrypto>(_ =>
+        {
+            var b64 = config["Google:TokenKey"];
+            var key = string.IsNullOrEmpty(b64)
+                ? System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"))
+                : Convert.FromBase64String(b64);
+            return new GoogleTokenCrypto(key);
+        });
         // Resend HTTPS API when configured (works behind DO's SMTP port blocks);
         // classic SMTP otherwise (Gmail etc.)
         services.Configure<EmailHttpOptions>(config.GetSection("Email:Http"));
