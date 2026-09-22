@@ -47,7 +47,7 @@ public sealed class R2BackupService(
         await using (var gzip = new System.IO.Compression.GZipStream(gz, System.IO.Compression.CompressionLevel.Optimal))
             await input.CopyToAsync(gzip, ct);
 
-        var key = $"backups/{DateTime.UtcNow:yyyy/MM/dd/HHmmss}.db.gz";
+        var key = $"class-booking/backups/{DateTime.UtcNow:yyyy/MM/dd/HHmmss}.db.gz"; // shared apps-bucket: namespace our objects
         using var s3 = Client();
         // R2 rejects the SDK's default chunked STREAMING-*-TRAILER uploads —
         // payload signing + default checksums must be disabled (same flags as
@@ -151,7 +151,7 @@ public sealed class R2BackupService(
         var list = await s3.ListObjectsV2Async(new ListObjectsV2Request
         {
             BucketName = config["R2:Bucket"],
-            Prefix = "backups/"
+            Prefix = "class-booking/backups/"
         }, ct);
         var newest = list.S3Objects.OrderByDescending(o => o.LastModified).FirstOrDefault()
                      ?? throw new InvalidOperationException("No backups found in R2.");
