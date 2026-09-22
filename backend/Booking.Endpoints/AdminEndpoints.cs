@@ -26,6 +26,19 @@ public static class AdminEndpoints
         group.MapGet("/backups", async (IBackupService backups, CancellationToken ct) =>
             Results.Ok(new { lastBackupUtc = await backups.LastBackupUtcAsync(ct) }));
 
+        group.MapPost("/backups/run", async (IBackupService backups, CancellationToken ct) =>
+        {
+            try
+            {
+                await backups.BackupNowAsync(ct);
+                return Results.Ok(new { backedUp = true, lastBackupUtc = await backups.LastBackupUtcAsync(ct) });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
         group.MapPost("/backups/restore", async (IBackupService backups, HttpContext http, CancellationToken ct) =>
         {
             try
