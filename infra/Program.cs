@@ -74,7 +74,9 @@ return await Deployment.RunAsync(() =>
     // compose; see infra/docker-compose.yml).
     var optionalKeys = new[]
     {
-        "FIXED_MEET_LINK", "R2_ACCOUNT_ID", "R2_KEY_ID", "R2_SECRET", "R2_BUCKET",
+        "FIXED_MEET_LINK", "MEET_PROVIDER", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REDIRECT_URI", "GOOGLE_TOKEN_KEY",
+        "R2_ACCOUNT_ID", "R2_KEY_ID", "R2_SECRET", "R2_BUCKET",
         "SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD",
         "EMAIL_API_KEY", "EMAIL_FROM",
         "TEACHER_EMAIL", "STUDENT_A_EMAIL", "STUDENT_B_EMAIL",
@@ -142,6 +144,26 @@ return await Deployment.RunAsync(() =>
         Interpreter = { "/bin/bash", "-c" },
         Triggers = { { "runStamp", runStamp } }, // re-pull :latest on every up
     }, new CustomResourceOptions { DependsOn = { writeEnv } });
+
+    // ── resource 3b: enable Google Calendar API (optional, no-op when unset) ─
+    // Skipped entirely unless GCP_PROJECT_ID + GCP_CREDENTIALS are provided
+    // (see docs/superpowers/specs/gcp-console-checklist.md). Requires gcloud on
+    // the runner; enablement is idempotent, so ephemeral state is safe.
+    var gcpProject = Environment.GetEnvironmentVariable("GCP_PROJECT_ID");
+    var gcpCreds = Environment.GetEnvironmentVariable("GCP_CREDENTIALS");
+    if (!string.IsNullOrWhiteSpace(gcpProject) && !string.IsNullOrWhiteSpace(gcpCreds))
+    {
+        var credFile = $"{runStamp}-gcp.json";
+        new LocalCommand("gcp-enable-calendar-api", new LocalCommandArgs
+        {
+            Create = string.Join(" && ",
+                $"printf '%s' \\\"$GCP_CREDENTIALS\\\" > /tmp/{credFile}",
+                $"CLOUDSDK_CORE_PROJECT={gcpProject} GOOGLE_APPLICATION_CREDENTIALS=/tmp/{credFile} " +
+                "gcloud services enable calendar-json.googleapis.com --quiet",
+                $"rm -f /tmp/{credFile}"),
+            Interpreter = { "/bin/bash", "-c" },
+        }, new CustomResourceOptions { DependsOn = { sshKey } });
+    }
 
     // ── resource 4: nginx-vhost ─────────────────────────────────────────────
     // Quoted heredocs (<<'EOF') keep $host / $proxy_add_x_forwarded_for /

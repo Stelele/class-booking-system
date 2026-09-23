@@ -32,3 +32,6 @@ node_modules/
 
 # pulumi local state
 infra/.pulumi-state/
+
+# superpowers worktrees (isolated agent workspaces)
+.worktrees/

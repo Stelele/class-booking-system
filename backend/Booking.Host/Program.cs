@@ -37,6 +37,7 @@ app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuth();
+app.MapGoogleAuth();
 app.MapSlots();
 app.MapIcs();
 app.MapBookings();

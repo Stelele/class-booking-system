@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api, ApiError } from '../composables/useApi'
 import type { SlotDay } from '../composables/useTime'
 
@@ -14,6 +15,26 @@ const confirmOpen = ref(false)
 const error = ref('')
 const restoreMessage = ref('')
 const restoreError = ref(false)
+const route = useRoute()
+const router = useRouter()
+const googleConnected = ref(false)
+const googleNeedsReconnect = ref(false)
+const googleLoading = ref(true)
+const googleNotice = ref('')
+const googleNoticeError = ref(false)
+
+function connectGoogle() {
+  window.location.href = '/api/auth/google/start'
+}
+
+async function loadGoogleStatus() {
+  try {
+    const res = await api<{ connected: boolean; needsReconnect: boolean }>('/admin/google/status')
+    googleConnected.value = res.connected
+    googleNeedsReconnect.value = res.needsReconnect
+  } catch { googleConnected.value = false; googleNeedsReconnect.value = false }
+  finally { googleLoading.value = false }
+}
 
 async function backupNow() {
   backingUp.value = true
@@ -93,12 +114,41 @@ async function doRestore() {
   }
 }
 
-onMounted(() => { load(); loadBackup() })
+onMounted(() => {
+  load(); loadBackup(); loadGoogleStatus()
+  const g = route.query.google
+  if (g === 'connected') { googleNotice.value = 'Google connected — new lessons get Meet links.'; googleNoticeError.value = false }
+  else if (g === 'error') { googleNotice.value = 'Google connect failed — please try again.'; googleNoticeError.value = true }
+  if (g !== undefined) void router.replace({ query: { ...route.query, google: undefined } })
+})
 </script>
 
 <template>
   <div>
     <h1 class="mb-4 text-xl font-semibold text-highlighted">Admin — block days</h1>
+
+    <UAlert
+      v-if="!googleLoading && googleNotice"
+      :color="googleNoticeError ? 'error' : 'success'"
+      variant="subtle"
+      :icon="googleNoticeError ? 'i-lucide-circle-alert' : 'i-lucide-check'"
+      :title="googleNotice"
+      class="mb-4"
+    />
+
+    <UAlert
+      v-if="!googleLoading && googleNeedsReconnect"
+      color="error" variant="subtle" icon="i-lucide-circle-alert"
+      title="Reconnect Google"
+      description="Google access expired — reconnect so new lessons keep getting Meet links."
+      class="mb-4"
+    />
+
+    <div v-if="!googleLoading && (!googleConnected || googleNeedsReconnect)" class="mb-4">
+      <UButton color="primary" icon="i-lucide-calendar-plus" @click="connectGoogle">
+        Connect Google
+      </UButton>
+    </div>
 
     <div class="mb-4 flex items-center justify-between">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" aria-label="Previous month" @click="shift(-1)" />

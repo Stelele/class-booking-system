@@ -106,6 +106,17 @@ test('cancel and reschedule from my lessons', async ({ page }) => {
   await expect(page.getByText('No upcoming lessons')).toBeVisible()
 })
 
+test('admin sees Connect Google button when Google is not configured', async ({ page }) => {
+  await login(page, 'teacher@example.com')
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+  const statusRes = await page.request.get('/api/admin/google/status');
+  expect(statusRes.ok()).toBeTruthy();
+  const status = await statusRes.json();
+  expect(status.connected).toBe(false);
+})
+
 test('admin blocks a day; student sees it unbookable; sunday never bookable', async ({ page }) => {
   await login(page, 'teacher@example.com')
   await page.getByRole('link', { name: 'Admin' }).click()

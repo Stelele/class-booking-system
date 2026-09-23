@@ -1,5 +1,6 @@
 using Booking.Application.Abstractions;
 using Booking.Infrastructure.Auth;
+using Booking.Infrastructure.Google;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
 using Booking.Infrastructure.Backups;
@@ -29,7 +30,61 @@ public static class DependencyInjection
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
-        services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
+        services.AddHttpClient("Google", c => c.BaseAddress = new Uri("https://www.googleapis.com/calendar/v3/"));
+        services.AddScoped<FixedLinkMeetProvider>();
+        var googleEnabled = (config["App:Meet:Provider"] ?? "fixed").Equals("google", StringComparison.OrdinalIgnoreCase);
+        if (googleEnabled)
+        {
+            services.AddScoped<IMeetLinkProvider, GoogleCalendarProvider>();
+            services.AddScoped<IMeetEventSync, GoogleCalendarProvider>();
+            services.AddHostedService<GoogleTokenRefreshWorker>();
+            var tokenKeyB64 = config["Google:TokenKey"];
+            if (string.IsNullOrEmpty(tokenKeyB64))
+                throw new InvalidOperationException("Google:TokenKey is not configured.");
+            byte[] tokenKey;
+            try { tokenKey = Convert.FromBase64String(tokenKeyB64); }
+            catch (FormatException ex) { throw new InvalidOperationException("Google:TokenKey is not valid base64.", ex); }
+            if (tokenKey.Length != 32)
+                throw new InvalidOperationException("Google:TokenKey must decode to exactly 32 bytes.");
+            services.AddSingleton(new GoogleTokenCrypto(tokenKey));
+        }
+        else
+        {
+            services.AddScoped<IMeetLinkProvider, FixedLinkMeetProvider>();
+            services.AddScoped<IMeetEventSync, FixedLinkEventSync>();
+            // Fixed mode stores no real Google tokens, but the always-registered
+            // connector still requires a resolvable crypto service. Lazy factory
+            // with environment gate: dev/test get a deterministic key, production
+            // fails LOUDLY rather than encrypting real tokens with a known key.
+            services.AddSingleton(_ =>
+            {
+                var fallbackB64 = config["Google:TokenKey"];
+                var isDev = string.Equals(config["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase)
+                    || config["E2E"] == "true";
+                byte[] fallbackKey;
+                if (string.IsNullOrEmpty(fallbackB64))
+                {
+                    if (!isDev) throw new InvalidOperationException("Google:TokenKey is not configured.");
+                    fallbackKey = System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes("dev-only-google-token-key"));
+                }
+                else
+                {
+                    try { fallbackKey = Convert.FromBase64String(fallbackB64); }
+                    catch (FormatException ex) { throw new InvalidOperationException("Google:TokenKey is not valid base64.", ex); }
+                }
+                return new GoogleTokenCrypto(fallbackKey);
+            });
+        }
+        // Google OAuth wiring: connect flow + status endpoint.
+        services.Configure<GoogleOAuthSettings>(config.GetSection("Google"));
+        services.AddSingleton<IGoogleOAuthStateStore, GoogleOAuthStateStore>();
+        // Single-instance only; replace with distributed cache if ever scaling horizontally
+        services.AddScoped<IGoogleAccountConnector, GoogleAccountConnector>();
+        services.AddScoped<IGoogleTokenStore, EfGoogleTokenStore>();
+        // Typed token client (base address is the stable Google endpoint).
+        services.AddHttpClient<GoogleOAuthClient>(c =>
+            c.BaseAddress = new Uri("https://oauth2.googleapis.com/"));
         // Resend HTTPS API when configured (works behind DO's SMTP port blocks);
         // classic SMTP otherwise (Gmail etc.)
         services.Configure<EmailHttpOptions>(config.GetSection("Email:Http"));

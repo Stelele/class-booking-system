@@ -37,6 +37,13 @@ jobs:
           DO_SSH_KEY: ${{ secrets.DO_SSH_KEY }}
           GH_OWNER: ${{ github.repository_owner }}
           FIXED_MEET_LINK: ${{ secrets.FIXED_MEET_LINK }}
+          MEET_PROVIDER: ${{ secrets.MEET_PROVIDER }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+          GOOGLE_REDIRECT_URI: ${{ secrets.GOOGLE_REDIRECT_URI }}
+          GOOGLE_TOKEN_KEY: ${{ secrets.GOOGLE_TOKEN_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_KEY_ID: ${{ secrets.R2_KEY_ID }}
           R2_SECRET: ${{ secrets.R2_SECRET }}

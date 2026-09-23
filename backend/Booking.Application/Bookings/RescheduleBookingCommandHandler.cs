@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Booking.Application.Bookings;
 
-public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet)
+public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet, IMeetEventSync sync)
     : ICommandHandler<RescheduleBookingCommand, BookingDto>
 {
     public async Task<BookingDto> Handle(RescheduleBookingCommand c, CancellationToken ct)
@@ -26,6 +26,7 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             b.Status == BookingStatus.Active && b.Slot.Date == c.NewDate, ct);
         if (clash) throw new BookingException("You already have a booking on the new day.");
 
+        var oldGoogleId = booking.Slot.GoogleEventId;
         var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.NewDate, ct);
         if (slot is null)
         {
@@ -33,7 +34,18 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             db.Slots.Add(slot);
         }
 
-        slot.MeetLink ??= await meet.GetOrCreateLinkAsync(c.NewDate, ct);
+        var oldDeleted = false;
+        if (slot.MeetLink is null)
+        {
+            var link = await meet.GetOrCreateLinkAsync(c.NewDate, ct);
+            slot.MeetLink = link.MeetLink;
+            slot.GoogleEventId = link.GoogleEventId;
+            if (oldGoogleId is not null)
+            {
+                await sync.DeleteEventAsync(oldGoogleId, ct);
+                oldDeleted = true;
+            }
+        }
 
         var originalDate = booking.OriginalDate ?? booking.Slot.Date;
         booking.OriginalDate = originalDate;
@@ -61,6 +73,10 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             booking.UpdatedAtUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             slot = winner;
+            // Retry path reads the link from the winner row without a second
+            // meet call and must NOT re-delete the old event (oldDeleted guards
+            // the single delete above, which already ran).
+            _ = oldDeleted;
         }
 
         return new BookingDto(booking.Id, c.NewDate, LessonTime.StartUtc(c.NewDate), user.Name,

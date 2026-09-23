@@ -15,6 +15,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<BookingEntity> Bookings => Set<BookingEntity>();
     public DbSet<BlockedDay> BlockedDays => Set<BlockedDay>();
     public DbSet<AuthCode> AuthCodes => Set<AuthCode>();
+    public DbSet<GoogleToken> GoogleTokens => Set<GoogleToken>();
     public DbSet<BackupLog> BackupLogs => Set<BackupLog>();
 
     protected override void OnModelCreating(ModelBuilder mb)
@@ -37,5 +38,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         });
         mb.Entity<BlockedDay>(e => e.HasKey(b => b.Date));
         mb.Entity<AuthCode>(e => e.HasIndex(a => a.UserId));
+        mb.Entity<GoogleToken>(e =>
+        {
+            e.HasIndex(t => t.UserId).IsUnique();
+            e.HasOne<User>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

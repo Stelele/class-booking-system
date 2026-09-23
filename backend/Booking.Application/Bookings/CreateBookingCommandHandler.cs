@@ -27,7 +27,12 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
             db.Slots.Add(slot);
         }
 
-        slot.MeetLink ??= await meet.GetOrCreateLinkAsync(c.Date, ct);
+        if (slot.MeetLink is null)
+        {
+            var link = await meet.GetOrCreateLinkAsync(c.Date, ct);
+            slot.MeetLink = link.MeetLink;
+            slot.GoogleEventId = link.GoogleEventId;
+        }
 
         var booking = new BookingEntity { SlotId = slot.Id, StudentId = user.UserId };
         db.Bookings.Add(booking);
