@@ -157,12 +157,12 @@ return await Deployment.RunAsync(() =>
         new LocalCommand("gcp-enable-calendar-api", new LocalCommandArgs
         {
             Create = string.Join(" && ",
-                $"printf '%s' "$GCP_CREDENTIALS" > /tmp/{credFile}",
+                $"printf '%s' \\\"$GCP_CREDENTIALS\\\" > /tmp/{credFile}",
                 $"CLOUDSDK_CORE_PROJECT={gcpProject} GOOGLE_APPLICATION_CREDENTIALS=/tmp/{credFile} " +
                 "gcloud services enable calendar-json.googleapis.com --quiet",
                 $"rm -f /tmp/{credFile}"),
             Interpreter = { "/bin/bash", "-c" },
-        }, new CustomResourceOptions { DependsOn = { writeKey } });
+        }, new CustomResourceOptions { DependsOn = { sshKey } });
     }
 
     // ── resource 4: nginx-vhost ─────────────────────────────────────────────
