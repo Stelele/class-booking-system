@@ -17,7 +17,7 @@ export default defineConfig({
       // SIGKILL any previous instance FIRST — a gracefully-dying server still
       // answers /health during shutdown, and Playwright would run the whole
       // suite against a zombie whose DB file the command below deletes
-      command: `bash ${root}/e2e/kill-servers.sh 8080 && rm -f ${root}/data/e2e.db ${root}/data/e2e.db-shm ${root}/data/e2e.db-wal && cd ${root}/backend && dotnet run --project Booking.Host --no-launch-profile > /tmp/e2e-be.log 2>&1`,
+      command: `bash ${root}/e2e/kill-servers.sh 8080 && rm -f ${root}/data/e2e.db ${root}/data/e2e.db-shm ${root}/data/e2e.db-wal && cd ${root}/backend && dotnet run --project Host --no-launch-profile > /tmp/e2e-be.log 2>&1`,
       url: 'http://localhost:8080/health',
       reuseExistingServer: false,
       timeout: 180_000,
