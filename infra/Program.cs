@@ -79,6 +79,7 @@ return await Deployment.RunAsync(() =>
         "R2_ACCOUNT_ID", "R2_KEY_ID", "R2_SECRET", "R2_BUCKET",
         "SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD",
         "EMAIL_API_KEY", "EMAIL_FROM",
+        "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER",
         "TEACHER_EMAIL", "STUDENT_A_EMAIL", "STUDENT_B_EMAIL",
     };
 

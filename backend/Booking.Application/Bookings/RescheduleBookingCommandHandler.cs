@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Booking.Application.Bookings;
 
-public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet, IMeetEventSync sync)
+public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet, IMeetEventSync sync, IBookingNotifier notifier)
     : ICommandHandler<RescheduleBookingCommand, BookingDto>
 {
     public async Task<BookingDto> Handle(RescheduleBookingCommand c, CancellationToken ct)
@@ -78,6 +78,8 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             // the single delete above, which already ran).
             _ = oldDeleted;
         }
+
+        await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Rescheduled, ct);
 
         return new BookingDto(booking.Id, c.NewDate, LessonTime.StartUtc(c.NewDate), user.Name,
             CanCancel: true, CanReschedule: true, OriginalDate: booking.OriginalDate, MeetLink: slot.MeetLink);

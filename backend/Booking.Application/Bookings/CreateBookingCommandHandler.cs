@@ -6,7 +6,7 @@ using BookingEntity = Booking.Domain.Slots.Booking;
 
 namespace Booking.Application.Bookings;
 
-public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet)
+public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet, IBookingNotifier notifier)
     : ICommandHandler<CreateBookingCommand, BookingDto>
 {
     public async Task<BookingDto> Handle(CreateBookingCommand c, CancellationToken ct)
@@ -56,6 +56,8 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
             await db.SaveChangesAsync(ct);
             slot = winner;
         }
+
+        await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Created, ct);
 
         return new BookingDto(booking.Id, c.Date, LessonTime.StartUtc(c.Date), user.Name,
             CanCancel: true, CanReschedule: true, OriginalDate: null, MeetLink: slot.MeetLink);

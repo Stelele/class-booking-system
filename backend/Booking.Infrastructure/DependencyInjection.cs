@@ -7,6 +7,7 @@ using Booking.Infrastructure.Backups;
 using Booking.Infrastructure.Identity;
 using Booking.Infrastructure.Meet;
 using Booking.Infrastructure.Persistence;
+using Booking.Infrastructure.WhatsApp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -108,6 +109,16 @@ public static class DependencyInjection
         {
             services.AddSingleton<IBackupService, NullBackupService>();
         }
+        services.Configure<TwilioOptions>(config.GetSection("Twilio"));
+        services.AddHttpClient("Twilio", c => c.BaseAddress = new Uri("https://api.twilio.com/"));
+        services.AddScoped<ITwilioSender>(sp =>
+            string.IsNullOrEmpty(config["Twilio:AccountSid"])
+                ? new NullTwilioSender(sp.GetRequiredService<ILogger<NullTwilioSender>>())
+                : new TwilioWhatsAppSender(
+                    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Twilio"),
+                    sp.GetRequiredService<IOptions<TwilioOptions>>(),
+                    sp.GetRequiredService<ILogger<TwilioWhatsAppSender>>()));
+        services.AddHostedService<ReminderService>();
         // E2E hook: capture login codes in-process so tests can read them via /api/test/latest-code
         if (config["E2E"] == "true")
             services.Replace(ServiceDescriptor.Scoped<ICodeSender, E2eCodeSender>());

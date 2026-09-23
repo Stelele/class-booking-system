@@ -1,5 +1,6 @@
 using Booking.Domain.Auth;
 using Booking.Domain.Backups;
+using Booking.Domain.Reminders;
 using Booking.Domain.Slots;
 using Booking.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,7 @@ public interface IAppDbContext
     DbSet<AuthCode> AuthCodes { get; }
     DbSet<BackupLog> BackupLogs { get; }
     DbSet<GoogleToken> GoogleTokens { get; }
+    DbSet<ReminderLog> ReminderLogs { get; }
     ChangeTracker ChangeTracker { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

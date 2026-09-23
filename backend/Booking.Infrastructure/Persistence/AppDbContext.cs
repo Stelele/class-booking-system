@@ -1,6 +1,7 @@
 using Booking.Application.Abstractions;
 using Booking.Domain.Auth;
 using Booking.Domain.Backups;
+using Booking.Domain.Reminders;
 using Booking.Domain.Users;
 using Booking.Domain.Slots;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AuthCode> AuthCodes => Set<AuthCode>();
     public DbSet<GoogleToken> GoogleTokens => Set<GoogleToken>();
     public DbSet<BackupLog> BackupLogs => Set<BackupLog>();
+    public DbSet<ReminderLog> ReminderLogs => Set<ReminderLog>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
