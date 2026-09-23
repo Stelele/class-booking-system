@@ -118,6 +118,7 @@ public static class DependencyInjection
                     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Twilio"),
                     sp.GetRequiredService<IOptions<TwilioOptions>>(),
                     sp.GetRequiredService<ILogger<TwilioWhatsAppSender>>()));
+        services.AddHostedService<ReminderService>();
         // E2E hook: capture login codes in-process so tests can read them via /api/test/latest-code
         if (config["E2E"] == "true")
             services.Replace(ServiceDescriptor.Scoped<ICodeSender, E2eCodeSender>());

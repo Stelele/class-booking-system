@@ -1,11 +1,13 @@
 using Booking.Application.Abstractions;
 using Booking.Application.BlockedDays;
+using Microsoft.EntityFrameworkCore;
 
 namespace Booking.Endpoints;
 
 public static class AdminEndpoints
 {
     public sealed record BlockRequest(DateOnly Date, string? Reason);
+    public sealed record PhoneRequest(string Email, string Phone);
 
     public static IEndpointRouteBuilder MapAdmin(this IEndpointRouteBuilder app)
     {
@@ -52,6 +54,17 @@ public static class AdminEndpoints
             {
                 return Results.BadRequest(new { error = ex.Message });
             }
+        });
+
+        group.MapPost("/users/phone", async (PhoneRequest req, IAppDbContext db, CancellationToken ct) =>
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(req.Phone ?? "", @"^\+\d{7,15}$"))
+                return Results.BadRequest(new { error = "Phone must be E.164, e.g. +447700900123." });
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Email == req.Email.Trim().ToLower(), ct);
+            if (user is null) return Results.NotFound(new { error = "No such user." });
+            user.PhoneE164 = req.Phone;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { ok = true });
         });
 
         return app;
