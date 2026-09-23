@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Booking.Application.Bookings;
 
-public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetEventSync sync)
+public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetEventSync sync, IBookingNotifier notifier)
     : ICommandHandler<CancelBookingCommand, bool>
 {
     public async Task<bool> Handle(CancelBookingCommand c, CancellationToken ct)
@@ -22,6 +22,7 @@ public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser u
         await db.SaveChangesAsync(ct);
         if (googleId is not null)
             await sync.DeleteEventAsync(googleId, ct);
+        await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Cancelled, ct);
         return true;
     }
 }
