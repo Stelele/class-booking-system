@@ -1,10 +1,11 @@
 using Application.Abstractions;
+using Application.Backups;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Backups;
 
-/// Nightly backup at 00:00 UTC (02:00 Africa/Harare — CAT is UTC+2 year-round).
+/// Backup every 15 minutes, aligned to :00/:15/:30/:45 UTC.
 /// Startup restore lives in MigrateAndSeedAsync (must run before the first migration).
 public sealed class BackupWorker(IBackupService backups, ILogger<BackupWorker> log) : BackgroundService
 {
@@ -13,7 +14,7 @@ public sealed class BackupWorker(IBackupService backups, ILogger<BackupWorker> l
         while (!ct.IsCancellationRequested)
         {
             var now = DateTime.UtcNow;
-            var next = now.Date.AddDays(1); // next 00:00 UTC
+            var next = BackupSchedule.NextRunUtc(now);
             try
             {
                 await Task.Delay(next - now, ct);
