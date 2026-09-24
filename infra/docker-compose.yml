@@ -2,6 +2,18 @@ services:
   backend:
     image: ghcr.io/${GH_OWNER}/class-booking-backend:${TAG:-latest}
     restart: unless-stopped
+    # 1GB droplet shared with other apps: cap our footprint so the .NET GC
+    # sizes its heap to the cgroup instead of assuming it owns the machine.
+    # Without this the backend grew until the OOM killer took it (exit 137).
+    mem_limit: 384m
+    mem_reservation: 192m
+    healthcheck:
+      # runtime image has no wget/curl: bash /dev/tcp proves Kestrel is listening
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080'"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
@@ -34,6 +46,8 @@ services:
   frontend:
     image: ghcr.io/${GH_OWNER}/class-booking-frontend:${TAG:-latest}
     restart: unless-stopped
+    mem_limit: 64m
+    mem_reservation: 32m
     ports:
       - "127.0.0.1:8081:80"
     depends_on:
