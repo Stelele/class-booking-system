@@ -45,6 +45,7 @@ Google connection [not configured]
 | Google OAuth | Connect button available; no runtime credentials | Teacher connects successfully |
 | Meet provider | Fixed link | Google after successful consent and smoke test |
 | Cancelled Google slot | Retains deleted event ID and dead Meet link | Clears both when the last active booking leaves |
+| Legacy unused slot | May retain a fixed-mode link and bypass Google | Refreshes through the active provider when no booking is active |
 
 ## Goals
 
@@ -53,6 +54,7 @@ Google connection [not configured]
 | Configure production OAuth without exposing credentials | Only secret names appear in command output |
 | Keep rollback safe during rollout | Provider remains fixed until consent succeeds |
 | Make booking cancellation reversible | A later booking creates a new Calendar event |
+| Make the first Google-era booking authoritative | Unused legacy slots refresh; slots with active bookings retain their existing link |
 | Prove Calendar event creation and deletion live | One future booking is created, observed, cancelled, and observed deleted |
 | Preserve existing CI conventions | No workflow rewrite or new framework |
 
@@ -144,16 +146,17 @@ Cancel or reschedule the last active booking
                     future booking creates new event
 ```
 
-A shared slot remains intact when another student still has an active booking. A reschedule to the same date does not release the slot.
+A shared slot remains intact when another student still has an active booking. A reschedule to the same date does not release the slot. When a new booking or reschedule enters a slot with no active bookings, the active provider refreshes any legacy fixed-mode link before the booking is saved.
 
 ## Components
 
 | File or surface | Change |
 |---|---|
-| `backend/Application/Bookings/CancelBookingCommandHandler.cs` | Clear a released slot and retain shared slots |
-| `backend/Application/Bookings/RescheduleBookingCommandHandler.cs` | Release the old slot when its last booking moves; delete the old event once |
-| `backend/Tests/ApiFactory.cs` | Provide a recording event-sync test double for handler tests |
-| `backend/Tests/Api/BookingApiTests.cs` | Add lifecycle regression coverage |
+| `backend/Application/Bookings/BookingSlotLifecycle.cs` | Clear a released slot, return its Google event ID, and identify active shared slots |
+| `backend/Application/Bookings/CreateBookingCommandHandler.cs` | Refresh a legacy link when the destination slot has no active bookings |
+| `backend/Application/Bookings/CancelBookingCommandHandler.cs` | Release a slot when cancellation removes its last active booking |
+| `backend/Application/Bookings/RescheduleBookingCommandHandler.cs` | Release the old slot when its last booking moves; refresh an unused destination and delete the old event once |
+| `backend/Tests/Bookings/BookingLifecycleTests.cs` | Add focused lifecycle regression coverage with in-memory persistence and recording fakes |
 | GitHub repository secrets | Add four runtime secrets, then add `MEET_PROVIDER=google` after consent |
 | Existing workflows | No source changes |
 
@@ -191,7 +194,7 @@ Regression tests                    Repository checks                 Live smoke
                                    └──────────────────────┘
 ```
 
-The live booking uses a far-future, currently unused weekday. It sends the normal booking confirmation and cancellation messages to the selected student account.
+The live booking uses a far-future, currently unused weekday. It executes the normal notification path. Twilio is currently unconfigured, so notification delivery is log-only and is not a Google rollout success criterion.
 
 ## Success Criteria
 
@@ -203,7 +206,7 @@ The live booking uses a far-future, currently unused weekday. It sends the norma
 | Google-mode deploy | Deployment succeeds and `/health` remains `200` |
 | Event creation | A real booking produces a unique Meet link and visible Calendar event |
 | Event deletion | Cancelling removes the Calendar event and releases the slot |
-| Regression | Last cancellation/reschedule clears stale Google fields; shared slots remain intact |
+| Regression | Last cancellation/reschedule clears stale Google fields; shared slots remain intact; unused legacy slots refresh |
 | Repository | Existing CI remains green and the worktree contains no secrets |
 
 ## Assumptions
@@ -212,4 +215,4 @@ The live booking uses a far-future, currently unused weekday. It sends the norma
 - The OAuth consent screen is published to Production and the teacher account is authorized.
 - The user can complete Google sign-in and consent in the browser.
 - The existing DigitalOcean, GHCR, Pulumi, and GitHub Actions deployment path remains available.
-- A real test booking and its normal notifications are acceptable.
+- A real test booking is acceptable; Twilio notification delivery is not required while Twilio remains unconfigured.
