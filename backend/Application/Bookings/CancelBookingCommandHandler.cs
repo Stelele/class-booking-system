@@ -16,12 +16,13 @@ public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser u
         if (booking.StudentId != user.UserId && !user.IsAdmin)
             throw new BookingException("You can only cancel your own bookings.");
 
-        var googleId = booking.Slot.GoogleEventId;
+        var googleEventId = await BookingSlotLifecycle.ReleaseIfUnusedAsync(
+            db, booking.Slot, booking.Id, ct);
         booking.Status = BookingStatus.Cancelled;
         booking.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        if (googleId is not null)
-            await sync.DeleteEventAsync(googleId, ct);
+        if (googleEventId is not null)
+            await sync.DeleteEventAsync(googleEventId, ct);
         await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Cancelled, ct);
         return true;
     }
