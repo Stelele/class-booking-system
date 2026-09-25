@@ -22,9 +22,37 @@ const googleNeedsReconnect = ref(false)
 const googleLoading = ref(true)
 const googleNotice = ref('')
 const googleNoticeError = ref(false)
+const googleDisconnectOpen = ref(false)
+const googleDisconnecting = ref(false)
+const googleNoticeWarning = ref(false)
 
 function connectGoogle() {
   window.location.href = '/api/auth/google/start'
+}
+
+async function disconnectGoogle() {
+  googleDisconnecting.value = true
+  googleNotice.value = ''
+  googleNoticeError.value = false
+  googleNoticeWarning.value = false
+  try {
+    const result = await api<{ remoteRevoked: boolean }>('/admin/google', { method: 'DELETE' })
+    googleDisconnectOpen.value = false
+    googleConnected.value = false
+    googleNeedsReconnect.value = false
+    googleNotice.value = result.remoteRevoked
+      ? 'Google disconnected. New bookings use the fallback link.'
+      : 'Local Google access was removed, but Google did not confirm revocation. Remove Lesson Booking from Google Account Settings → Security → Third-party connections.'
+    googleNoticeError.value = false
+    googleNoticeWarning.value = !result.remoteRevoked
+    await loadGoogleStatus()
+  } catch (e: unknown) {
+    googleNotice.value = e instanceof Error ? e.message : 'Could not disconnect Google.'
+    googleNoticeError.value = true
+    googleNoticeWarning.value = false
+  } finally {
+    googleDisconnecting.value = false
+  }
 }
 
 async function loadGoogleStatus() {
@@ -129,9 +157,9 @@ onMounted(() => {
 
     <UAlert
       v-if="!googleLoading && googleNotice"
-      :color="googleNoticeError ? 'error' : 'success'"
+      :color="googleNoticeError ? 'error' : googleNoticeWarning ? 'warning' : 'success'"
+      :icon="googleNoticeError ? 'i-lucide-circle-alert' : googleNoticeWarning ? 'i-lucide-triangle-alert' : 'i-lucide-check'"
       variant="subtle"
-      :icon="googleNoticeError ? 'i-lucide-circle-alert' : 'i-lucide-check'"
       :title="googleNotice"
       class="mb-4"
     />
@@ -140,11 +168,60 @@ onMounted(() => {
       v-if="!googleLoading && googleNeedsReconnect"
       color="error" variant="subtle" icon="i-lucide-circle-alert"
       title="Reconnect Google"
-      description="Google access expired — reconnect so new lessons keep getting Meet links."
+      description="Your stored Google permission needs attention. Reconnect to request the narrower calendar.events.owned permission, or disconnect to remove local access."
       class="mb-4"
     />
 
-    <div v-if="!googleLoading && (!googleConnected || googleNeedsReconnect)" class="mb-4">
+    <UCard
+      v-if="!googleLoading && (googleConnected || googleNeedsReconnect)"
+      variant="outline"
+      class="mb-4"
+    >
+      <template #header>
+        <div class="flex items-center justify-between gap-4">
+          <h2 class="font-semibold text-highlighted">Google Calendar</h2>
+          <UBadge
+            :color="googleNeedsReconnect ? 'warning' : 'success'"
+            variant="soft"
+          >
+            {{ googleNeedsReconnect ? 'Reconnect required' : 'Connected' }}
+          </UBadge>
+        </div>
+      </template>
+
+      <p class="text-muted">
+        {{ googleNeedsReconnect
+          ? 'Reconnect for new Meet links, or disconnect to remove local Google access.'
+          : 'Create and remove lesson events with Meet links on your primary calendar.' }}
+      </p>
+      <p class="mt-3 text-sm text-muted"><strong>Required permission:</strong> calendar.events.owned</p>
+
+      <template #footer>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <ULink to="/privacy" class="text-sm text-primary">Privacy policy</ULink>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-if="googleNeedsReconnect"
+              color="primary"
+              icon="i-lucide-refresh-cw"
+              @click="connectGoogle"
+            >
+              Reconnect Google
+            </UButton>
+            <UButton
+              color="error"
+              variant="soft"
+              icon="i-lucide-unlink"
+              @click="googleDisconnectOpen = true"
+            >
+              Disconnect Google
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UCard>
+
+    <div v-if="!googleLoading && !googleConnected && !googleNeedsReconnect" class="mb-4">
       <UButton color="primary" icon="i-lucide-calendar-plus" @click="connectGoogle">
         Connect Google
       </UButton>
@@ -206,6 +283,40 @@ onMounted(() => {
         </div>
       </template>
     </UCard>
+
+    <UModal :open="googleDisconnectOpen" @update:open="googleDisconnectOpen = $event">
+      <template #content>
+        <UCard variant="naked">
+          <template #header>
+            <h2 class="text-lg font-semibold text-highlighted">Disconnect Google Calendar?</h2>
+          </template>
+
+          <p class="text-muted">Lesson Booking will lose permission to create or remove Calendar events.</p>
+          <UAlert
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-info"
+            title="Existing events are preserved"
+            description="Your Google Calendar events and Meet links stay in your Google account. New bookings use the configured fallback link until you reconnect."
+            class="mt-4"
+          />
+
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton color="neutral" variant="soft" @click="googleDisconnectOpen = false">Cancel</UButton>
+              <UButton
+                color="error"
+                icon="i-lucide-unlink"
+                :loading="googleDisconnecting"
+                @click="disconnectGoogle"
+              >
+                Disconnect Google
+              </UButton>
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
 
     <UModal :open="confirmOpen" @update:open="confirmOpen = $event">
       <template #content>

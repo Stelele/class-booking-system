@@ -137,3 +137,99 @@ test('admin blocks a day; student sees it unbookable; sunday never bookable', as
   const sunday = nthWeekdayOfNextMonth(0, 1) // 1st Sunday
   await expect(page2.locator(`[data-date="${sunday}"]`)).not.toHaveClass(/cursor-pointer/)
 })
+
+test('admin disconnects Google and returns to Connect state', async ({ page }) => {
+  await login(page, 'teacher@example.com')
+  let connected = true
+  let deleteRequests = 0
+
+  await page.route('**/api/admin/google/status', route => route.fulfill({
+    json: { connected, needsReconnect: false },
+  }))
+  await page.route('**/api/admin/google', async route => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    deleteRequests += 1
+    connected = false
+    await route.fulfill({ json: { remoteRevoked: true } })
+  })
+
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+  await expect(page.getByText('calendar.events.owned')).toBeVisible()
+  await page.getByRole('button', { name: 'Disconnect Google' }).click()
+  await expect(page.getByText('Disconnect Google Calendar?')).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  expect(deleteRequests).toBe(0)
+
+  await page.getByRole('button', { name: 'Disconnect Google' }).click()
+  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+
+  await expect(page.getByText('Google disconnected. New bookings use the fallback link.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+  expect(deleteRequests).toBe(1)
+})
+
+test('admin disconnect warns when local access ends before Google confirms revocation', async ({ page }) => {
+  await login(page, 'teacher@example.com')
+  await page.route('**/api/admin/google/status', route => route.fulfill({
+    json: { connected: true, needsReconnect: false },
+  }))
+  await page.route('**/api/admin/google', route => route.fulfill({
+    json: { remoteRevoked: false },
+  }))
+
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+  await page.getByRole('button', { name: 'Disconnect Google' }).click()
+  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+
+  await expect(page.getByText(/Google did not confirm revocation/)).toBeVisible()
+  await expect(page.getByText(/Google Account Settings/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+})
+
+test('admin keeps connected state when local disconnect fails', async ({ page }) => {
+  await login(page, 'teacher@example.com')
+  await page.route('**/api/admin/google/status', route => route.fulfill({
+    json: { connected: true, needsReconnect: false },
+  }))
+  await page.route('**/api/admin/google', route => route.fulfill({
+    status: 500,
+    json: { error: 'Could not disconnect Google.' },
+  }))
+
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+  await page.getByRole('button', { name: 'Disconnect Google' }).click()
+  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+  await expect(page.getByText('Disconnect Google Calendar?')).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  await expect(page.getByText('Could not disconnect Google.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Disconnect Google' })).toBeVisible()
+  await expect(page.getByText('Connected')).toBeVisible()
+})
+
+test('admin disconnects reconnect-required Google token', async ({ page }) => {
+  await login(page, 'teacher@example.com')
+  let needsReconnect = true
+
+  await page.route('**/api/admin/google/status', route => route.fulfill({
+    json: { connected: false, needsReconnect },
+  }))
+  await page.route('**/api/admin/google', async route => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    needsReconnect = false
+    await route.fulfill({ json: { remoteRevoked: true } })
+  })
+
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+  await expect(page.getByText('Reconnect required').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reconnect Google' })).toBeVisible()
+  await page.getByRole('button', { name: 'Disconnect Google' }).click()
+  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+
+  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+  expect(needsReconnect).toBe(false)
+})
