@@ -233,3 +233,15 @@ test('admin disconnects reconnect-required Google token', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
   expect(needsReconnect).toBe(false)
 })
+
+test('privacy policy discloses Google data and user controls', async ({ page }) => {
+  await page.goto('/privacy')
+
+  await expect(page.getByText('Last updated: 25 September 2026')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Google Calendar' })).toBeVisible()
+  await expect(page.getByText(/calendar.events.owned/)).toBeVisible()
+  await expect(page.getByText(/AES-256-GCM/)).toBeVisible()
+  await expect(page.getByText(/revoked-token record/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Disconnect and deletion' })).toBeVisible()
+  await expect(page.getByText(/Google Account Settings/)).toBeVisible()
+})
