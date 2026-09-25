@@ -28,12 +28,16 @@ export default defineConfig({
       workbox: {
         // SPA: unknown navigations get the app shell
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         runtimeCaching: [
           {
-            // read-through cache: calendar/bookings stay visible offline,
+            // read-through cache: shared calendar data stays visible offline,
             // fresh data wins whenever the network is up
-            urlPattern: ({ url, request }) => url.pathname.startsWith('/api/') && request.method === 'GET',
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET'
+              && (url.pathname === '/api/slots'
+                || /^\/api\/slots\/[^/]+\/ics$/.test(url.pathname)),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
