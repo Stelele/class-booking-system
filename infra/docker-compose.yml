@@ -23,6 +23,7 @@ services:
       - Google__ClientId=${GOOGLE_CLIENT_ID}
       - Google__ClientSecret=${GOOGLE_CLIENT_SECRET}
       - Google__RedirectUri=${GOOGLE_REDIRECT_URI}
+      - Google__LoginRedirectUri=${GOOGLE_LOGIN_REDIRECT_URI}
       - Google__TokenKey=${GOOGLE_TOKEN_KEY}
       - Twilio__AccountSid=${TWILIO_ACCOUNT_SID}
       - Twilio__AuthToken=${TWILIO_AUTH_TOKEN}

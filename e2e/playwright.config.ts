@@ -28,6 +28,7 @@ export default defineConfig({
         // absolute path: DbPath resolves relative to process cwd
         App__DbPath: `${root}/data/e2e.db`,
         App__FixedMeetLink: 'https://meet.google.com/e2e-test-link',
+        Google__LoginRedirectUri: 'http://localhost:8080/api/auth/google/login/callback',
       },
     },
     {
