@@ -19,8 +19,9 @@ public class ApiFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Development");
         // fresh SQLite file per test-host run (pooled connections open per context)
-        var path = Path.Combine(Path.GetTempPath(), $"tests-{Guid.NewGuid():N}.db");
-        builder.UseSetting("App:DbPath", path);
+        var directory = Path.Combine(Path.GetTempPath(), $"tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        builder.UseSetting("App:DbPath", Path.Combine(directory, "booking.db"));
         builder.ConfigureTestServices(services =>
         {
             // fake code sender records the code for tests

@@ -2,6 +2,7 @@ using Application;
 using Endpoints;
 using Infrastructure;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 
 using System.Text.Json.Serialization;
 
@@ -10,6 +11,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+var configuredDbPath = builder.Configuration["App:DbPath"] ?? "data/booking.db";
+var keyDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configuredDbPath))!, "data-protection-keys");
+Directory.CreateDirectory(keyDirectory);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keyDirectory))
+    .SetApplicationName("ClassBooking");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>
