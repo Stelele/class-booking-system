@@ -450,7 +450,9 @@ Add to `backend/Tests/Auth/GoogleAuthFlowTests.cs`:
     [Fact]
     public async Task Disconnect_admin_without_token_reports_remote_revoked()
     {
-        var client = _factory.CreateClient();
+        using var googleFactory = _factory.WithWebHostBuilder(b =>
+            b.UseSetting("Google:TokenKey", Convert.ToBase64String(new byte[32])));
+        var client = googleFactory.CreateClient();
         await LoginAsTeacherAsync(client);
 
         var res = await client.DeleteAsync("/api/admin/google");
@@ -525,7 +527,7 @@ Add this method to the existing `FakeStore` in `backend/Tests/Google/GoogleCalen
 
 - [ ] **Step 6: Implement connector disconnect**
 
-Add this method to `GoogleAccountConnector` without adding comments:
+Add `using System.Security.Cryptography;` to `GoogleAccountConnector`, then add this method without adding comments:
 
 ```csharp
     public async Task<bool> DisconnectAsync(CancellationToken ct)
