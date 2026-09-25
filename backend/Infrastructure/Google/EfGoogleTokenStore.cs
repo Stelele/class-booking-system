@@ -7,14 +7,16 @@ namespace Infrastructure.Google;
 /// EF implementation: single row for the teacher (Admin). UserId recorded for audit.
 public sealed class EfGoogleTokenStore(IAppDbContext db) : IGoogleTokenStore
 {
-    private const string CalendarScope = "https://www.googleapis.com/auth/calendar.events";
-
     public async Task<GoogleTokenData?> GetAsync(CancellationToken ct)
     {
         var row = await db.GoogleTokens.OrderByDescending(t => t.Id).FirstOrDefaultAsync(ct);
         return row is null
             ? null
-            : new GoogleTokenData(row.RefreshTokenEncrypted, row.AccessToken ?? "", row.ExpiryUtc, row.NeedsReconnect);
+            : new GoogleTokenData(
+                row.RefreshTokenEncrypted,
+                row.AccessToken ?? "",
+                row.ExpiryUtc,
+                row.NeedsReconnect || row.Scope != GoogleOAuthScopes.CalendarEventsOwned);
     }
 
     public async Task SaveAsync(GoogleTokenData token, Guid userId, CancellationToken ct)
@@ -29,7 +31,7 @@ public sealed class EfGoogleTokenStore(IAppDbContext db) : IGoogleTokenStore
                 RefreshTokenEncrypted = token.RefreshTokenEncrypted,
                 AccessToken = token.AccessToken,
                 ExpiryUtc = token.ExpiryUtc,
-                Scope = CalendarScope,
+                Scope = GoogleOAuthScopes.CalendarEventsOwned,
                 NeedsReconnect = token.NeedsReconnect,
             };
             db.GoogleTokens.Add(row);
@@ -39,6 +41,7 @@ public sealed class EfGoogleTokenStore(IAppDbContext db) : IGoogleTokenStore
             row.RefreshTokenEncrypted = token.RefreshTokenEncrypted;
             row.AccessToken = token.AccessToken;
             row.ExpiryUtc = token.ExpiryUtc;
+            row.Scope = GoogleOAuthScopes.CalendarEventsOwned;
             row.NeedsReconnect = token.NeedsReconnect;
         }
         try { await db.SaveChangesAsync(ct); }
@@ -49,6 +52,7 @@ public sealed class EfGoogleTokenStore(IAppDbContext db) : IGoogleTokenStore
             row.RefreshTokenEncrypted = token.RefreshTokenEncrypted;
             row.AccessToken = token.AccessToken;
             row.ExpiryUtc = token.ExpiryUtc;
+            row.Scope = GoogleOAuthScopes.CalendarEventsOwned;
             row.NeedsReconnect = token.NeedsReconnect;
             await db.SaveChangesAsync(ct);
         }

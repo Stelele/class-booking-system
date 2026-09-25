@@ -18,7 +18,7 @@ public sealed class BeginGoogleOAuthQueryHandler(
             + $"client_id={Uri.EscapeDataString(settings.ClientId)}"
             + $"&redirect_uri={Uri.EscapeDataString(settings.RedirectUri)}"
             + "&response_type=code"
-            + $"&scope={Uri.EscapeDataString("https://www.googleapis.com/auth/calendar.events")}"
+            + $"&scope={Uri.EscapeDataString(GoogleOAuthScopes.CalendarEventsOwned)}"
             + "&access_type=offline&prompt=consent"
             + $"&state={Uri.EscapeDataString(state)}";
         return Task.FromResult(url);

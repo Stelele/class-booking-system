@@ -37,7 +37,11 @@ public class GoogleAuthFlowTests
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         var location = res.Headers.Location?.ToString() ?? "";
         Assert.Contains("accounts.google.com", location);
-        Assert.Contains("calendar.events", location);
+        const string ownedScope = "https://www.googleapis.com/auth/calendar.events.owned";
+        Assert.Contains($"scope={Uri.EscapeDataString(ownedScope)}&access_type=offline", location);
+        Assert.DoesNotContain(
+            $"scope={Uri.EscapeDataString("https://www.googleapis.com/auth/calendar.events")}&access_type=offline",
+            location);
     }
 
     [Fact]
