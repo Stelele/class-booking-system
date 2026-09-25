@@ -71,6 +71,22 @@ public sealed class GoogleTokenStoreTests
             (await db.GoogleTokens.SingleAsync()).Scope);
     }
 
+    [Fact]
+    public async Task Delete_removes_active_google_token()
+    {
+        await using var db = NewDb();
+        var store = new EfGoogleTokenStore(db);
+        await store.SaveAsync(
+            new GoogleTokenData("encrypted", "access", DateTime.UtcNow.AddHours(1), false),
+            Guid.NewGuid(),
+            CancellationToken.None);
+        Assert.Single(await db.GoogleTokens.ToListAsync());
+
+        await store.DeleteAsync(CancellationToken.None);
+
+        Assert.Empty(await db.GoogleTokens.ToListAsync());
+    }
+
     private static AppDbContext NewDb()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

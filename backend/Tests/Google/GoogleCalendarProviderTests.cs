@@ -46,6 +46,12 @@ public class GoogleCalendarProviderTests
             if (Current is not null) Current = Current with { NeedsReconnect = true };
             return Task.CompletedTask;
         }
+
+        public Task DeleteAsync(CancellationToken ct)
+        {
+            Current = null;
+            return Task.CompletedTask;
+        }
     }
 
     private string? _body;

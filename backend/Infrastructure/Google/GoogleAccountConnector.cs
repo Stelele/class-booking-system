@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Application.Abstractions;
 using Application.Bookings;
 using Microsoft.Extensions.Logging;
@@ -25,6 +26,43 @@ public sealed class GoogleAccountConnector(
         await store.SaveAsync(
             new GoogleTokenData(encrypted, tokens.AccessToken, tokens.ExpiryUtc, false), userId, ct);
         log.LogInformation("Google account connected for user {UserId}.", userId);
+    }
+
+    public async Task<bool> DisconnectAsync(CancellationToken ct)
+    {
+        var remoteRevoked = false;
+        try
+        {
+            var existing = await store.GetAsync(ct);
+            if (existing is null) return true;
+
+            var refreshToken = crypto.Decrypt(existing.RefreshTokenEncrypted);
+            if (string.IsNullOrEmpty(refreshToken))
+                throw new CryptographicException("Stored Google refresh token is empty.");
+
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["token"] = refreshToken,
+            });
+            using var http = httpFactory.CreateClient();
+            using var response = await http.PostAsync(
+                "https://oauth2.googleapis.com/revoke", content, ct);
+            remoteRevoked = response.IsSuccessStatusCode;
+            if (!remoteRevoked)
+                log.LogWarning(
+                    "Google token revocation returned {StatusCode}; deleting the local token.",
+                    (int)response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Google token revocation failed; deleting the local token.");
+        }
+        finally
+        {
+            await store.DeleteAsync(CancellationToken.None);
+        }
+
+        return remoteRevoked;
     }
 
     private async Task RevokeExistingAsync(CancellationToken ct)

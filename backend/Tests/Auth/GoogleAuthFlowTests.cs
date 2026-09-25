@@ -70,5 +70,48 @@ public class GoogleAuthFlowTests
         Assert.False(body.NeedsReconnect);
     }
 
+    [Fact]
+    public async Task Disconnect_anonymous_is_401()
+    {
+        var client = _factory.CreateClient();
+
+        var res = await client.DeleteAsync("/api/admin/google");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Disconnect_student_is_403()
+    {
+        var student = _factory.CreateClient();
+        await student.PostAsJsonAsync("/api/auth/request-code", new { email = "studenta@example.com" });
+        var verify = await student.PostAsJsonAsync(
+            "/api/auth/verify",
+            new { email = "studenta@example.com", code = ApiFactory.LastCode });
+        verify.EnsureSuccessStatusCode();
+
+        var res = await student.DeleteAsync("/api/admin/google");
+
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Disconnect_admin_without_token_reports_remote_revoked()
+    {
+        using var googleFactory = _factory.WithWebHostBuilder(b =>
+            b.UseSetting("Google:TokenKey", Convert.ToBase64String(new byte[32])));
+        var client = googleFactory.CreateClient();
+        await LoginAsTeacherAsync(client);
+
+        var res = await client.DeleteAsync("/api/admin/google");
+        var body = await res.Content.ReadFromJsonAsync<GoogleDisconnectResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.NotNull(body);
+        Assert.True(body.RemoteRevoked);
+    }
+
+    private sealed record GoogleDisconnectResponse(bool RemoteRevoked);
+
     private sealed record GoogleStatus(bool Connected, bool NeedsReconnect);
 }

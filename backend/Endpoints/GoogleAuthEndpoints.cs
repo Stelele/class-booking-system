@@ -38,6 +38,10 @@ public static class GoogleAuthEndpoints
             Results.Ok(await sender.Send(new GetGoogleStatusQuery())))
            .RequireAuthorization(p => p.RequireRole("Admin"));
 
+        app.MapDelete("/api/admin/google", async (ISender sender, CancellationToken ct) =>
+            Results.Ok(await sender.Send(new DisconnectGoogleCommand(), ct)))
+           .RequireAuthorization(p => p.RequireRole("Admin"));
+
         return app;
     }
 }

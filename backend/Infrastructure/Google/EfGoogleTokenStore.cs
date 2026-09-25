@@ -58,6 +58,13 @@ public sealed class EfGoogleTokenStore(IAppDbContext db) : IGoogleTokenStore
         }
     }
 
+    public async Task DeleteAsync(CancellationToken ct)
+    {
+        var rows = await db.GoogleTokens.ToListAsync(ct);
+        db.GoogleTokens.RemoveRange(rows);
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task FlagReconnectAsync(CancellationToken ct)
     {
         var row = await db.GoogleTokens.OrderByDescending(t => t.Id).FirstOrDefaultAsync(ct);
