@@ -36,7 +36,11 @@
 | `backend/Application/Auth/CompleteGoogleLoginCommand.cs` | Callback request |
 | `backend/Application/Auth/CompleteGoogleLoginCommandHandler.cs` | Validate identity and match an existing user |
 | `backend/Endpoints/AuthCookie.cs` | Issue the same app cookie for email and Google login |
-| `backend/Endpoints/GoogleLoginEndpoints.cs` | Login start/callback routes |
+| `backend/Application/Abstractions/IGoogleOAuthStateStore.cs` | Purpose and browser binding for OAuth state |
+| `backend/Infrastructure/Google/GoogleOAuthStateStore.cs` | Expiring purpose-bound state entries |
+| `backend/Application/Auth/BeginGoogleOAuthQueryHandler.cs` | Purpose-tag existing Calendar state |
+| `backend/Application/Auth/CompleteGoogleOAuthCommandHandler.cs` | Consume Calendar-purpose state |
+| `backend/Endpoints/GoogleLoginEndpoints.cs` | Login start/callback routes and binding cookie |
 | `backend/Infrastructure/Google/GoogleOAuthClient.cs` | Exchange code and fetch Google user info |
 | `backend/Infrastructure/Google/GoogleLoginService.cs` | Coordinate code exchange and user-info lookup |
 | `backend/Infrastructure/DependencyInjection.cs` | Register login service and settings |
@@ -211,6 +215,10 @@ Expected: one commit containing only the two listed files.
 - Create: `backend/Application/Abstractions/GoogleLoginIdentity.cs`
 - Create: `backend/Application/Abstractions/IGoogleLoginService.cs`
 - Modify: `backend/Application/Abstractions/GoogleOAuthSettings.cs`
+- Modify: `backend/Application/Abstractions/IGoogleOAuthStateStore.cs`
+- Modify: `backend/Infrastructure/Google/GoogleOAuthStateStore.cs`
+- Modify: `backend/Application/Auth/BeginGoogleOAuthQueryHandler.cs`
+- Modify: `backend/Application/Auth/CompleteGoogleOAuthCommandHandler.cs`
 - Create: `backend/Application/Abstractions/GoogleLoginScopes.cs`
 - Create: `backend/Application/Auth/BeginGoogleLoginQuery.cs`
 - Create: `backend/Application/Auth/BeginGoogleLoginQueryHandler.cs`
@@ -676,6 +684,12 @@ public sealed class CompleteGoogleLoginCommandHandler(
 }
 ```
 
+- [ ] **Step 8a: Harden OAuth state purpose and browser binding**
+
+Update `IGoogleOAuthStateStore` to `Issue(string purpose, string binding = "")` and `Consume(string state, string purpose, string binding = "")`. `GoogleOAuthStateStore` must retain the 10-minute expiry and single-use removal while comparing purpose and binding. Existing Calendar handlers use purpose `calendar`; login handlers use purpose `login`.
+
+The login start endpoint must generate a random 32-byte URL-safe binding, set it in an HttpOnly, SameSite=Lax, Path=/, 10-minute `GoogleLoginState` cookie with `Secure` based on `IHostEnvironment.IsDevelopment()`, and pass it through `BeginGoogleLoginQuery`. The callback must require the cookie, delete it, and pass it through `CompleteGoogleLoginCommand`; a callback from another browser must fail. Add tests for unconfigured start, missing binding, mismatched binding, and Calendar/login purpose separation.
+
 - [ ] **Step 9: Share cookie issuance between login methods**
 
 Create `backend/Endpoints/AuthCookie.cs`:
@@ -774,7 +788,7 @@ Expected: all focused tests pass and the full backend suite has 0 failures.
 - [ ] **Step 12: Commit after explicit authorization**
 
 ```bash
-git add backend/Application/Abstractions/GoogleLoginIdentity.cs backend/Application/Abstractions/IGoogleLoginService.cs backend/Application/Abstractions/GoogleOAuthSettings.cs backend/Application/Abstractions/GoogleLoginScopes.cs backend/Application/Auth/BeginGoogleLoginQuery.cs backend/Application/Auth/BeginGoogleLoginQueryHandler.cs backend/Application/Auth/CompleteGoogleLoginCommand.cs backend/Application/Auth/CompleteGoogleLoginCommandHandler.cs backend/Endpoints/AuthCookie.cs backend/Endpoints/AuthEndpoints.cs backend/Endpoints/GoogleLoginEndpoints.cs backend/Host/Program.cs backend/Infrastructure/Google/GoogleOAuthClient.cs backend/Infrastructure/Google/GoogleLoginService.cs backend/Infrastructure/DependencyInjection.cs backend/Tests/Google/GoogleOAuthClientTests.cs backend/Tests/Auth/GoogleLoginFlowTests.cs
+git add backend/Application/Abstractions/GoogleLoginIdentity.cs backend/Application/Abstractions/IGoogleLoginService.cs backend/Application/Abstractions/GoogleOAuthSettings.cs backend/Application/Abstractions/IGoogleOAuthStateStore.cs backend/Infrastructure/Google/GoogleOAuthStateStore.cs backend/Application/Auth/BeginGoogleOAuthQueryHandler.cs backend/Application/Auth/CompleteGoogleOAuthCommandHandler.cs backend/Application/Abstractions/GoogleLoginScopes.cs backend/Application/Auth/BeginGoogleLoginQuery.cs backend/Application/Auth/BeginGoogleLoginQueryHandler.cs backend/Application/Auth/CompleteGoogleLoginCommand.cs backend/Application/Auth/CompleteGoogleLoginCommandHandler.cs backend/Endpoints/AuthCookie.cs backend/Endpoints/AuthEndpoints.cs backend/Endpoints/GoogleLoginEndpoints.cs backend/Host/Program.cs backend/Infrastructure/Google/GoogleOAuthClient.cs backend/Infrastructure/Google/GoogleLoginService.cs backend/Infrastructure/DependencyInjection.cs backend/Tests/Google/GoogleOAuthClientTests.cs backend/Tests/Auth/GoogleLoginFlowTests.cs
 git commit -m "feat(auth): add Google login"
 ```
 

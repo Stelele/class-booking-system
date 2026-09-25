@@ -112,7 +112,7 @@ No new identity provider          Reuse current Google OAuth client
 | Role/name | Read from the matched `User`; Google profile fields do not control authorization |
 | Unknown account | Return a generic login error; do not create a user |
 | Unverified email | Reject even if an account has the same email |
-| State | Existing single-use state store, 10-minute expiry |
+| State | Purpose-separated single-use state store; login state is bound to a random HttpOnly 10-minute browser cookie; Calendar state remains admin-flow |
 | Return path | Fixed local `/calendar`; no user-controlled redirect target |
 
 ## Google Login Flow
@@ -190,6 +190,7 @@ Container start
 
 ```text
 Invalid/missing state       ──► reject; no token exchange
+Missing/mismatched binding  ──► reject; no token exchange
 Google token exchange fails ──► generic login error
 User-info request fails     ──► generic login error
 email_verified != true      ──► reject
@@ -210,7 +211,8 @@ Cookie signing key missing  ──► existing login flow cannot issue valid coo
 Backend
 ├─ login authorization URL contains openid/email/profile
 ├─ login URL does not contain calendar scope
-├─ state is required and single-use
+├─ state is required, single-use, and purpose-separated
+├─ login state requires the initiating browser binding cookie
 ├─ verified existing email issues cookie with app role
 ├─ unknown email is rejected without account creation
 ├─ unverified email is rejected

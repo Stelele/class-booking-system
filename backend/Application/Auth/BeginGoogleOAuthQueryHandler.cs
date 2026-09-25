@@ -13,7 +13,7 @@ public sealed class BeginGoogleOAuthQueryHandler(
         if (!user.IsAdmin) throw new UnauthorizedAccessException("Admin only.");
         var settings = opts.Value;
         if (string.IsNullOrEmpty(settings.ClientId)) throw new BookingException("Google is not configured.");
-        var state = states.Issue();
+        var state = states.Issue("calendar");
         var url = "https://accounts.google.com/o/oauth2/v2/auth?"
             + $"client_id={Uri.EscapeDataString(settings.ClientId)}"
             + $"&redirect_uri={Uri.EscapeDataString(settings.RedirectUri)}"

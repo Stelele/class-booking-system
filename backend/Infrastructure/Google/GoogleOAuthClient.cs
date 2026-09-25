@@ -1,5 +1,7 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Application.Abstractions;
 
 namespace Infrastructure.Google;
 
@@ -7,6 +9,8 @@ public sealed record GoogleTokens(string AccessToken, string? RefreshToken, Date
 
 public sealed class GoogleOAuthClient(HttpClient http)
 {
+    private const string UserInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo";
+
     public async Task<GoogleTokens> ExchangeCodeAsync(
         string code, string clientId, string clientSecret, string redirectUri, CancellationToken ct)
     {
@@ -38,6 +42,19 @@ public sealed class GoogleOAuthClient(HttpClient http)
         return await ReadTokens(res, ct);
     }
 
+    public async Task<GoogleLoginIdentity> GetUserInfoAsync(string accessToken, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, UserInfoEndpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var res = await http.SendAsync(request, ct);
+        await EnsureSuccessWithBodyAsync(res, ct);
+        var body = await res.Content.ReadFromJsonAsync<UserInfoResponse>(ct)
+            ?? throw new InvalidOperationException("Empty userinfo response.");
+        if (string.IsNullOrWhiteSpace(body.Sub) || string.IsNullOrWhiteSpace(body.Email))
+            throw new InvalidOperationException("Google userinfo response is missing sub or email.");
+        return new GoogleLoginIdentity(body.Sub, body.Email.Trim(), body.EmailVerified, body.Name ?? "");
+    }
+
     private static async Task EnsureSuccessWithBodyAsync(HttpResponseMessage res, CancellationToken ct)
     {
         if (res.IsSuccessStatusCode) return;
@@ -60,4 +77,10 @@ public sealed class GoogleOAuthClient(HttpClient http)
         [property: JsonPropertyName("access_token")] string AccessToken,
         [property: JsonPropertyName("refresh_token")] string? RefreshToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn);
+
+    private sealed record UserInfoResponse(
+        [property: JsonPropertyName("sub")] string Sub,
+        [property: JsonPropertyName("email")] string Email,
+        [property: JsonPropertyName("email_verified")] bool EmailVerified,
+        [property: JsonPropertyName("name")] string? Name);
 }

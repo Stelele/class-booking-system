@@ -82,6 +82,7 @@ public static class DependencyInjection
         services.AddSingleton<IGoogleOAuthStateStore, GoogleOAuthStateStore>();
         // Single-instance only; replace with distributed cache if ever scaling horizontally
         services.AddScoped<IGoogleAccountConnector, GoogleAccountConnector>();
+        services.AddScoped<IGoogleLoginService, GoogleLoginService>();
         services.AddScoped<IGoogleTokenStore, EfGoogleTokenStore>();
         // Typed token client (base address is the stable Google endpoint).
         services.AddHttpClient<GoogleOAuthClient>(c =>

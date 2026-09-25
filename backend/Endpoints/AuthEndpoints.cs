@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Application.Abstractions;
 using Application.Auth;
 using Application.DTOs;
@@ -41,16 +40,7 @@ public static class AuthEndpoints
                 return Results.Unauthorized();
             }
 
-            var identity = new ClaimsIdentity(
-            [
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Name, user.Name),
-            ], "cookies");
-            if (user.Role == "Admin") identity.AddClaim(new Claim(ClaimTypes.Role, "Admin"));
-
-            await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-                new ClaimsPrincipal(identity),
-                new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30) });
+            await AuthCookie.IssueAsync(http, user);
             return Results.Ok(user);
         });
 

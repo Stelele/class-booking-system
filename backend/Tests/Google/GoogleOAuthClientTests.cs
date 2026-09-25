@@ -45,4 +45,53 @@ public class GoogleOAuthClientTests
         Assert.Equal("ya29.new", tokens.AccessToken);
         Assert.Contains("grant_type=refresh_token", _capturedBody);
     }
+
+    [Fact]
+    public async Task GetUserInfo_gets_userinfo_with_bearer_and_maps_identity()
+    {
+        HttpRequestMessage? captured = null;
+        var client = new GoogleOAuthClient(new HttpClient(new StubHandler(r =>
+        {
+            captured = r;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    sub = "sub-123",
+                    email = "person@example.com",
+                    email_verified = true,
+                    name = "Google Person",
+                }), Encoding.UTF8, "application/json"),
+            };
+        }))
+        { BaseAddress = new Uri("https://oauth2.googleapis.com/") });
+
+        var identity = await client.GetUserInfoAsync("ya29.new", CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Equal(HttpMethod.Get, captured!.Method);
+        Assert.Equal(
+            new Uri("https://openidconnect.googleapis.com/v1/userinfo"), captured.RequestUri);
+        Assert.Equal("Bearer", captured.Headers.Authorization?.Scheme);
+        Assert.Equal("ya29.new", captured.Headers.Authorization?.Parameter);
+        Assert.Equal("sub-123", identity.Subject);
+        Assert.Equal("person@example.com", identity.Email);
+        Assert.True(identity.EmailVerified);
+        Assert.Equal("Google Person", identity.Name);
+    }
+
+    [Fact]
+    public async Task GetUserInfo_rejects_response_without_email()
+    {
+        var client = new GoogleOAuthClient(new HttpClient(new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(new { sub = "sub-123", email = "", email_verified = true }),
+                    Encoding.UTF8, "application/json"),
+            }))
+        { BaseAddress = new Uri("https://oauth2.googleapis.com/") });
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.GetUserInfoAsync("ya29.new", CancellationToken.None));
+    }
 }
