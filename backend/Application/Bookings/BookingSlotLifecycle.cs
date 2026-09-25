@@ -6,6 +6,14 @@ namespace Application.Bookings;
 
 internal static class BookingSlotLifecycle
 {
+    public static Task<bool> HasActiveBookingsAsync(
+        IAppDbContext db,
+        Slot slot,
+        CancellationToken ct) =>
+        db.Bookings.AnyAsync(
+            b => b.SlotId == slot.Id && b.Status == BookingStatus.Active,
+            ct);
+
     public static async Task<string?> ReleaseIfUnusedAsync(
         IAppDbContext db,
         Slot slot,

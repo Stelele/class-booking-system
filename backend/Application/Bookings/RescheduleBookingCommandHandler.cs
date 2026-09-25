@@ -35,7 +35,8 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
         }
 
         var oldDeleted = false;
-        if (slot.MeetLink is null)
+        if (slot.MeetLink is null
+            || !await BookingSlotLifecycle.HasActiveBookingsAsync(db, slot, ct))
         {
             var link = await meet.GetOrCreateLinkAsync(c.NewDate, ct);
             slot.MeetLink = link.MeetLink;

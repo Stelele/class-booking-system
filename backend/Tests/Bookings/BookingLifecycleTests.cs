@@ -70,6 +70,106 @@ public sealed class BookingLifecycleTests
         Assert.Empty(events.DeletedEventIds);
     }
 
+    [Fact]
+    public async Task Create_booking_refreshes_legacy_unused_slot()
+    {
+        await using var db = NewDb();
+        var firstStudentId = Guid.NewGuid();
+        var secondStudentId = Guid.NewGuid();
+        var date = FutureDate(32);
+        var (slot, cancelledBooking) = await SeedAsync(
+            db, date, firstStudentId, "https://meet.google.com/legacy", null);
+        cancelledBooking.Status = BookingStatus.Cancelled;
+        await db.SaveChangesAsync();
+        var provider = new RecordingMeetLinkProvider();
+
+        var create = new CreateBookingCommandHandler(
+            db, new StubCurrentUser(secondStudentId), provider, new NullBookingNotifier());
+        var created = await create.Handle(
+            new CreateBookingCommand(date), CancellationToken.None);
+
+        Assert.Equal(1, provider.Calls);
+        Assert.Equal("https://meet.google.com/new-1", created.MeetLink);
+        Assert.Equal("https://meet.google.com/new-1", slot.MeetLink);
+        Assert.Equal("new-event-1", slot.GoogleEventId);
+    }
+
+    [Fact]
+    public async Task Create_booking_reuses_link_for_active_shared_slot()
+    {
+        await using var db = NewDb();
+        var firstStudentId = Guid.NewGuid();
+        var secondStudentId = Guid.NewGuid();
+        var date = FutureDate(33);
+        var (slot, _) = await SeedAsync(
+            db, date, firstStudentId, "https://meet.google.com/shared", "shared-event");
+        var provider = new RecordingMeetLinkProvider();
+
+        var create = new CreateBookingCommandHandler(
+            db, new StubCurrentUser(secondStudentId), provider, new NullBookingNotifier());
+        var created = await create.Handle(
+            new CreateBookingCommand(date), CancellationToken.None);
+
+        Assert.Equal(0, provider.Calls);
+        Assert.Equal("https://meet.google.com/shared", created.MeetLink);
+        Assert.Equal("shared-event", slot.GoogleEventId);
+    }
+
+    [Fact]
+    public async Task Reschedule_refreshes_legacy_unused_destination()
+    {
+        await using var db = NewDb();
+        var movingStudentId = Guid.NewGuid();
+        var oldDate = FutureDate(34);
+        var newDate = FutureDate(35);
+        var (_, movingBooking) = await SeedAsync(
+            db, oldDate, movingStudentId, "https://meet.google.com/old", "old-event");
+        var targetSlot = new Slot
+        {
+            Date = newDate,
+            MeetLink = "https://meet.google.com/legacy-target",
+        };
+        db.Add(targetSlot);
+        await db.SaveChangesAsync();
+        var provider = new RecordingMeetLinkProvider();
+        var events = new RecordingMeetEventSync();
+
+        var reschedule = new RescheduleBookingCommandHandler(
+            db, new StubCurrentUser(movingStudentId), provider, events, new NullBookingNotifier());
+        var moved = await reschedule.Handle(
+            new RescheduleBookingCommand(movingBooking.Id, newDate), CancellationToken.None);
+
+        Assert.Equal(1, provider.Calls);
+        Assert.Equal("https://meet.google.com/new-1", moved.MeetLink);
+        Assert.Equal("https://meet.google.com/new-1", targetSlot.MeetLink);
+        Assert.Equal("new-event-1", targetSlot.GoogleEventId);
+    }
+
+    [Fact]
+    public async Task Reschedule_reuses_active_destination_link()
+    {
+        await using var db = NewDb();
+        var movingStudentId = Guid.NewGuid();
+        var targetStudentId = Guid.NewGuid();
+        var oldDate = FutureDate(36);
+        var targetDate = FutureDate(37);
+        var (_, movingBooking) = await SeedAsync(
+            db, oldDate, movingStudentId, "https://meet.google.com/old", "old-event");
+        var (targetSlot, _) = await SeedAsync(
+            db, targetDate, targetStudentId, "https://meet.google.com/target", "target-event");
+        var provider = new RecordingMeetLinkProvider();
+        var events = new RecordingMeetEventSync();
+
+        var reschedule = new RescheduleBookingCommandHandler(
+            db, new StubCurrentUser(movingStudentId), provider, events, new NullBookingNotifier());
+        var moved = await reschedule.Handle(
+            new RescheduleBookingCommand(movingBooking.Id, targetDate), CancellationToken.None);
+
+        Assert.Equal(0, provider.Calls);
+        Assert.Equal("https://meet.google.com/target", moved.MeetLink);
+        Assert.Equal("target-event", targetSlot.GoogleEventId);
+    }
+
     private static AppDbContext NewDb()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

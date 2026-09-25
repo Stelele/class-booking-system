@@ -27,7 +27,8 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
             db.Slots.Add(slot);
         }
 
-        if (slot.MeetLink is null)
+        if (slot.MeetLink is null
+            || !await BookingSlotLifecycle.HasActiveBookingsAsync(db, slot, ct))
         {
             var link = await meet.GetOrCreateLinkAsync(c.Date, ct);
             slot.MeetLink = link.MeetLink;
