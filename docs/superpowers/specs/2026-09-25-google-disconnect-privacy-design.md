@@ -30,9 +30,9 @@ Verification video ──────────► out of scope
 | Surface | Current | Target |
 |---|---|---|
 | OAuth authorization URL | `calendar.events` | `calendar.events.owned` |
-| Stored token scope | `calendar.events` | `calendar.events.owned` on reconnect |
+| Stored token scope | `calendar.events` | `calendar.events.owned` after reconnect; legacy scope is flagged |
 | Admin connected state | No unlink action | Disconnect button and confirmation modal |
-| Remote grant | Cannot be revoked from the app | Revoked on disconnect |
+| Remote grant | Cannot be revoked from the app | Revocation attempted; result reported |
 | Active local credential | Cannot be deleted from the app | Deleted on disconnect even if revocation fails |
 | Existing Calendar events | No lifecycle action | Preserved and controlled in Google Calendar |
 | Privacy disclosure | Inaccurate after Google integration | Complete plain-language policy |
@@ -69,7 +69,7 @@ backend/Infrastructure/Google/EfGoogleTokenStore
                          = https://www.googleapis.com/auth/calendar.events.owned
 ```
 
-Create one public constant and use it in both the authorization URL and the token row’s `Scope` field. Remove every runtime occurrence of the broader `calendar.events` value.
+Create one public constant and use it in both the authorization URL and the token row’s `Scope` field. Remove every runtime occurrence of the broader `calendar.events` value. A stored row with any other scope must be surfaced as `NeedsReconnect`, and reconnect must update the stored scope after revoking the old grant.
 
 The narrower scope supports the event insert and delete operations already used against `calendars/primary`. The application does not use it to read existing event content.
 
@@ -118,8 +118,8 @@ Google’s OAuth policy requires tokens to be revoked when the app no longer nee
 ```text
 ┌─ Google Calendar ───────────────────── Connected ┐
 │ Create/remove owned-calendar lesson events.     │
-│ Permission: calendar.events.owned               │
-│                                  [Disconnect]  │
+│ Required permission: calendar.events.owned      │
+│                                  [Disconnect]   │
 └────────────────────────────────────────────────┘
                          │ click
                          ▼
@@ -131,8 +131,8 @@ Google’s OAuth policy requires tokens to be revoked when the app no longer nee
 └────────────────────────────────────────────────┘
 ```
 
-- Show the card and Disconnect action only for a healthy connected state.
-- Keep the reconnect banner and Connect action unchanged for missing or reconnect-required tokens.
+- Show Disconnect whenever a stored token exists, including a `NeedsReconnect` token; users must be able to revoke the old grant during the owned-scope migration.
+- For a healthy token, show a Connected card with Disconnect. For a stale token, show Reconnect required with both Reconnect and Disconnect. For no token, show Connect only.
 - Require explicit modal confirmation.
 - Disable duplicate requests while disconnecting.
 - On confirmed revocation, show a success notice, refresh status, and restore the Connect action.
@@ -163,7 +163,7 @@ The plain-language policy must disclose:
 | Infrastructure | DigitalOcean application host, Cloudflare R2 backups, Resend email, Twilio WhatsApp when configured, Google Calendar |
 | Security logs | Hosting/security systems may process IP address, request time, route, and user agent |
 | Retention | Login codes expire; booking data remains while the service operates; Google token remains until disconnect |
-| Backups | Encrypted historical database snapshots may retain revoked token records; revoked tokens cannot authorize Google access |
+| Backups | Historical Cloudflare R2 database backups may retain already-encrypted revoked-token records because backup deletion is not immediate |
 | Disconnect | Asks Google to revoke the grant and always deletes the active local token row; explains manual Google removal if remote revocation is not confirmed |
 | Existing events | Remain in the teacher’s Google Calendar after disconnect and can be managed there |
 | Deletion/contact | Users can request account/data deletion by email; include `giftmugweni@gmail.com` |
@@ -198,6 +198,7 @@ Backend
 
 Frontend
 ├─ connected state shows permission and Disconnect
+├─ reconnect-required state exposes both Reconnect and Disconnect
 ├─ modal explains event preservation and fallback
 ├─ cancel sends no request
 ├─ success updates status and shows Connect
@@ -237,7 +238,7 @@ The broad grant is revoked explicitly after deployment. The application must not
 | Remote control | Admin can disconnect; the result truthfully reports whether Google confirmed remote revocation |
 | Local cleanup | Active credential row is deleted even when remote revocation fails |
 | Event safety | Existing Calendar events and Meet links remain unchanged |
-| UI | Confirmation is explicit; connected/disconnected states are truthful |
+| UI | Confirmation is explicit; healthy and reconnect-required states can both be disconnected |
 | Privacy | Policy matches actual storage, sharing, encryption, backup, and deletion behavior |
 | Migration | Old broad grant is revoked and replaced through one explicit reconnect |
 | Verification | CI, deploy, health, booking, cancellation, and slot-release checks pass |
