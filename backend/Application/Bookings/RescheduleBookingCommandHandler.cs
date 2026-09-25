@@ -26,7 +26,7 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             b.Status == BookingStatus.Active && b.Slot.Date == c.NewDate, ct);
         if (clash) throw new BookingException("You already have a booking on the new day.");
 
-        var oldGoogleId = booking.Slot.GoogleEventId;
+        var oldSlotId = booking.SlotId;
         var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.NewDate, ct);
         if (slot is null)
         {
@@ -34,18 +34,19 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             db.Slots.Add(slot);
         }
 
-        var oldDeleted = false;
         if (slot.MeetLink is null
             || !await BookingSlotLifecycle.HasActiveBookingsAsync(db, slot, ct))
         {
             var link = await meet.GetOrCreateLinkAsync(c.NewDate, ct);
             slot.MeetLink = link.MeetLink;
             slot.GoogleEventId = link.GoogleEventId;
-            if (oldGoogleId is not null)
-            {
-                await sync.DeleteEventAsync(oldGoogleId, ct);
-                oldDeleted = true;
-            }
+        }
+
+        string? releasedGoogleEventId = null;
+        if (oldSlotId != slot.Id)
+        {
+            releasedGoogleEventId = await BookingSlotLifecycle.ReleaseIfUnusedAsync(
+                db, booking.Slot, booking.Id, ct);
         }
 
         var originalDate = booking.OriginalDate ?? booking.Slot.Date;
@@ -72,14 +73,18 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
             booking.OriginalDate = originalDate;
             booking.SlotId = winner.Id;
             booking.UpdatedAtUtc = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
             slot = winner;
-            // Retry path reads the link from the winner row without a second
-            // meet call and must NOT re-delete the old event (oldDeleted guards
-            // the single delete above, which already ran).
-            _ = oldDeleted;
+            if (oldSlotId != slot.Id)
+            {
+                var oldSlot = await db.Slots.FirstAsync(s => s.Id == oldSlotId, ct);
+                releasedGoogleEventId = await BookingSlotLifecycle.ReleaseIfUnusedAsync(
+                    db, oldSlot, booking.Id, ct);
+            }
+            await db.SaveChangesAsync(ct);
         }
 
+        if (releasedGoogleEventId is not null)
+            await sync.DeleteEventAsync(releasedGoogleEventId, ct);
         await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Rescheduled, ct);
 
         return new BookingDto(booking.Id, c.NewDate, LessonTime.StartUtc(c.NewDate), user.Name,
