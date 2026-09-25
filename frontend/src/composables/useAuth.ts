@@ -14,6 +14,10 @@ export async function requestCode(email: string) {
   await api('/auth/request-code', { method: 'POST', body: JSON.stringify({ email }) })
 }
 
+export function startGoogleLogin() {
+  window.location.href = '/api/auth/google/login/start'
+}
+
 export async function verifyCode(email: string, code: string) {
   user.value = await api<Me>('/auth/verify', { method: 'POST', body: JSON.stringify({ email, code }) })
 }

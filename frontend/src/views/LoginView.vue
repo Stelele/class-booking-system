@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { onBeforeUnmount, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { requestCode, verifyCode } from '../composables/useAuth'
+import { useRoute, useRouter } from 'vue-router'
+import { requestCode, startGoogleLogin, verifyCode } from '../composables/useAuth'
 import { ApiError } from '../composables/useApi'
 
 const state = reactive({ email: '', code: '' })
 const sent = ref(false)
 const resent = ref(false)
-const error = ref('')
 const busy = ref(false)
 const router = useRouter()
+const route = useRoute()
+const error = ref(route.query.google === 'error'
+  ? 'Google sign-in failed. Use the email code below or try again.'
+  : '')
 
 const RESEND_COOLDOWN = 30
 const resendIn = ref(0)
@@ -65,6 +68,20 @@ async function step2() {
     <template #header>
       <h1 class="text-xl font-semibold text-highlighted">Log in</h1>
     </template>
+
+    <UButton
+      v-if="!sent"
+      type="button"
+      block
+      color="neutral"
+      variant="outline"
+      icon="i-lucide-log-in"
+      @click="startGoogleLogin"
+    >
+      Continue with Google
+    </UButton>
+
+    <div v-if="!sent" class="my-4 text-center text-xs text-muted">or continue with email</div>
 
     <UForm v-if="!sent" :state="state" @submit="step1">
       <UFormField label="Email" name="email" required>

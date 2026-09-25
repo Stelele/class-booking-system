@@ -245,3 +245,18 @@ test('privacy policy discloses Google data and user controls', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Disconnect and deletion' })).toBeVisible()
   await expect(page.getByText(/Google Account Settings/)).toBeVisible()
 })
+
+test('login shows Google option and preserves email fallback', async ({ page }) => {
+  await page.goto('/login')
+
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+  await expect(page.getByPlaceholder('Your email')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send code' })).toBeVisible()
+})
+
+test('login shows sanitized Google callback error', async ({ page }) => {
+  await page.goto('/login?google=error')
+
+  await expect(page.getByText('Google sign-in failed. Use the email code below or try again.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+})
