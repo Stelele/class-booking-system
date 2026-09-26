@@ -211,6 +211,27 @@ public class AdminUsersTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Phone_with_non_ascii_digits_rejected()
+    {
+        // .NET's \d matches every Unicode decimal digit, but E.164 is ASCII-only,
+        // so a fullwidth- or Arabic-Indic-digit number would pass validation, get
+        // stored, and then silently fail to deliver. Built from code points so
+        // the digits stay unambiguous in source: 0xFF10-0xFF19 and 0x0660-0x0669
+        // are ten consecutive decimal digits, which is a valid E.164 length.
+        var fullwidth = "+" + string.Concat(Enumerable.Range(0xFF10, 10).Select(c => (char)c));
+        var arabicIndic = "+" + string.Concat(Enumerable.Range(0x0660, 10).Select(c => (char)c));
+
+        var admin = await LoginAsync("teacher@example.com");
+        var target = await RowForAsync(admin, "studentb@example.com");
+
+        foreach (var bad in new[] { fullwidth, arabicIndic })
+        {
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await PutAsync(admin, target.Id, "Bob Chirwa", target.Email, bad)).StatusCode);
+        }
+    }
+
+    [Fact]
     public async Task Blank_phone_clears_the_number()
     {
         var admin = await LoginAsync("teacher@example.com");

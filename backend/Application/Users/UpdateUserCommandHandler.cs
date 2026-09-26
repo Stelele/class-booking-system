@@ -46,6 +46,7 @@ public sealed partial class UpdateUserCommandHandler(IAppDbContext db, ICurrentU
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
     private static partial Regex EmailPattern();
 
-    [GeneratedRegex(@"^\+\d{7,15}$")]
+    // E.164 is ASCII-only; \d would also accept Unicode decimal digits
+    [GeneratedRegex(@"^\+[0-9]{7,15}$")]
     private static partial Regex PhonePattern();
 }
