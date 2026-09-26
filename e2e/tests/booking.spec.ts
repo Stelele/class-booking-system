@@ -352,6 +352,10 @@ test('login shows sanitized Google callback error', async ({ page }) => {
 // name and that name is what the shared calendar shows. Renames back at the end
 // so the suite stays order-independent on the shared database.
 test('admin renames a student and the real name shows on the shared calendar', async ({ page }) => {
+  // Runs two browser contexts, two logins, a reload to prove the restore
+  // persisted, and a booking plus three cancellations. ~6s standalone, but
+  // 30s was marginal for it under a full-suite run against the dev backend.
+  test.slow()
   await login(page, SEED.teacher.email)
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
