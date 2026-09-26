@@ -361,11 +361,14 @@ test('admin renames a student and the real name shows on the shared calendar', a
   await page.waitForURL('**/admin')
 
   const row = page.locator(`[data-user-email="${SEED.studentA.email}"]`)
+  let renamed = false
+  let restored = false
   await row.getByPlaceholder('Full name').fill('Tafadzwa Mugweni')
   await row.getByRole('button', { name: 'Save' }).click()
   await expect(row.getByPlaceholder('Full name')).toHaveValue('Tafadzwa Mugweni')
+  renamed = true
 
-  // 1st FRIDAY, not a 5th Thursday: a month can have only four Thursdays, which
+  // 1st FRIDAY, not a 5th Thursday: a month can only have four Thursdays, which
   // would push the 5th into the following month where gotoNextMonth never lands.
   // Every month has at least four Fridays, and the earlier tests take Thursdays.
   const date = nthWeekdayOfNextMonth(5, 1)
@@ -374,8 +377,10 @@ test('admin renames a student and the real name shows on the shared calendar', a
   // and the restore PUT below came back 403. Asserting the input value hid it.
   const studentContext = await page.context().browser()!.newContext()
   const student = await studentContext.newPage()
+  let studentIn = false
   try {
     await login(student, SEED.studentA.email)
+    studentIn = true
     await gotoNextMonth(student)
     await student.locator(`[data-date="${date}"]`).click()
     await student.getByRole('button', { name: 'Confirm booking' }).click()
@@ -389,14 +394,31 @@ test('admin renames a student and the real name shows on the shared calendar', a
     await page.reload()
     await expect(page.locator(`[data-user-email="${SEED.studentA.email}"]`)
       .getByPlaceholder('Full name')).toHaveValue(SEED.studentA.name)
-
-    // Release the booking via My Lessons. The calendar cell opens BookingModal,
-    // whose own "Cancel" just dismisses the dialog — clicking that here left the
-    // booking active and only looked like cleanup.
-    await student.getByRole('link', { name: 'My Lessons' }).click()
-    await student.waitForURL('**/mine')
-    await cancelAllBookings(student)
+    restored = true
   } finally {
-    await studentContext.close()
+    // Both cleanups are failure-safe: an assertion failing above must not leave
+    // a renamed student or an active booking behind for the next test. Each is
+    // guarded by the write it has to undo, and each is independent so one
+    // failing cannot skip the other.
+    try {
+      if (studentIn) {
+        // Release the booking via My Lessons. The calendar cell opens
+        // BookingModal, whose own "Cancel" just dismisses the dialog — clicking
+        // that here left the booking active and only looked like cleanup.
+        await student.getByRole('link', { name: 'My Lessons' }).click()
+        await student.waitForURL('**/mine')
+        await cancelAllBookings(student)
+      }
+    } finally {
+      try {
+        // best effort, no assertion — the body already proved the restore works
+        if (renamed && !restored) {
+          await row.getByPlaceholder('Full name').fill(SEED.studentA.name)
+          await row.getByRole('button', { name: 'Save' }).click()
+        }
+      } finally {
+        await studentContext.close()
+      }
+    }
   }
 })
