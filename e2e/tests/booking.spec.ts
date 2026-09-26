@@ -1,5 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// The seeded placeholder names, mirroring App:Users in backend/Host/appsettings.json.
+// Assert through these so changing a seed name is a one-line edit here rather
+// than a hunt through string literals.
+const SEED = {
+  teacher: { email: 'teacher@example.com', name: 'Teacher' },
+  studentA: { email: 'studenta@example.com', name: 'Student A' },
+  studentB: { email: 'studentb@example.com', name: 'Student B' },
+} as const
+
 const API = 'http://localhost:8080'
 
 async function login(page: Page, email: string) {
@@ -67,46 +76,62 @@ async function cancelDialog(page: Page) {
   await dialog.getByRole('button', { name: 'Cancel' }).click()
 }
 
+// Release every booking the signed-in student holds, so a test cannot leak
+// bookings into the next one on the shared database. The settle wait avoids
+// sampling the button count mid-re-render (a 0 there would skip the loop);
+// toHaveCount after each click auto-waits through the reload.
+async function cancelAllBookings(page: Page) {
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(200)
+    const n = await page.getByRole('button', { name: 'Cancel' }).count()
+    if (n === 0) break
+    await page.getByRole('button', { name: 'Cancel' }).first().click()
+    await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(n - 1)
+  }
+  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
+  await expect(page.getByText('No upcoming lessons')).toBeVisible()
+}
+
 test('student logs in, books, sees name on shared calendar', async ({ page }) => {
-  await login(page, 'studenta@example.com')
+  await login(page, SEED.studentA.email)
   await gotoNextMonth(page)
   const date = nthWeekdayOfNextMonth(4, 1) // 1st Thursday
   const cell = page.locator(`[data-date="${date}"]`)
   await cell.click()
   await page.getByRole('button', { name: 'Confirm booking' }).click()
-  await expect(cell).toContainText('Student A', { timeout: 10_000 })
+  await expect(cell).toContainText(SEED.studentA.name, { timeout: 10_000 })
   // Booked cells intentionally stay clickable — that's how the second
   // student joins for a combined lesson
   await expect(cell).toHaveClass(/cursor-pointer/)
 })
 
 test('second student same day shows combined', async ({ page }) => {
-  await login(page, 'studenta@example.com')
+  await login(page, SEED.studentA.email)
   await gotoNextMonth(page)
   const date = nthWeekdayOfNextMonth(4, 2) // 2nd Thursday
   await page.locator(`[data-date="${date}"]`).click()
   await page.getByRole('button', { name: 'Confirm booking' }).click()
-  await expect(page.locator(`[data-date="${date}"]`)).toContainText('Student A')
+  await expect(page.locator(`[data-date="${date}"]`)).toContainText(SEED.studentA.name)
 
   // Booked days stay bookable on purpose — that's how the second student
   // joins and the day becomes a combined lesson
   const page2 = await page.context().newPage()
-  await login(page2, 'studentb@example.com')
+  await login(page2, SEED.studentB.email)
   await gotoNextMonth(page2)
   const cell2 = page2.locator(`[data-date="${date}"]`)
   await cell2.click()
   await page2.getByRole('button', { name: 'Confirm booking' }).click()
   await expect(cell2).toContainText('combined')
-  await expect(cell2).toContainText('Student B')
+  await expect(cell2).toContainText(SEED.studentB.name)
 })
 
 test('cancel and reschedule from my lessons', async ({ page }) => {
-  await login(page, 'studentb@example.com')
+  await login(page, SEED.studentB.email)
   await gotoNextMonth(page)
   const date = nthWeekdayOfNextMonth(4, 3) // 3rd Thursday
   await page.locator(`[data-date="${date}"]`).click()
   await page.getByRole('button', { name: 'Confirm booking' }).click()
-  await expect(page.locator(`[data-date="${date}"]`)).toContainText('Student B')
+  await expect(page.locator(`[data-date="${date}"]`)).toContainText(SEED.studentB.name)
 
   await page.getByRole('link', { name: 'My Lessons' }).click()
   await page.waitForURL('**/mine')
@@ -119,23 +144,13 @@ test('cancel and reschedule from my lessons', async ({ page }) => {
   // "Moved!" renders before the list reload finishes — gate on the NEW DOM
   await expect(page.getByText('moved from')).toBeVisible()
 
-  // CANCEL everything studentb holds. The settle wait avoids sampling the
-  // button count mid-re-render (a 0 there would skip the whole loop); the
-  // toHaveCount after each click auto-waits through the reload.
-  for (let i = 0; i < 6; i++) {
-    await page.waitForTimeout(200)
-    const n = await page.getByRole('button', { name: 'Cancel' }).count()
-    if (n === 0) break
-    await page.getByRole('button', { name: 'Cancel' }).first().click()
-    await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(n - 1)
-  }
-  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
+  // CANCEL everything studentb holds
+  await cancelAllBookings(page)
   await expect(page.getByText('moved from')).toHaveCount(0)
-  await expect(page.getByText('No upcoming lessons')).toBeVisible()
 })
 
 test('admin calendar renders the same shared grid as the calendar page', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   await gotoNextMonth(page)
 
   const { year, month } = nextMonthParts()
@@ -171,7 +186,7 @@ test('admin calendar renders the same shared grid as the calendar page', async (
 })
 
 test('admin sees Connect Google button when Google is not configured', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
   await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible()
@@ -182,7 +197,7 @@ test('admin sees Connect Google button when Google is not configured', async ({ 
 })
 
 test('admin blocks a day; student sees it unbookable; sunday never bookable', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
   await gotoNextMonth(page)
@@ -191,7 +206,7 @@ test('admin blocks a day; student sees it unbookable; sunday never bookable', as
   await expect(page.locator(`[data-date="${date}"]`)).toContainText('blocked')
 
   const page2 = await page.context().newPage()
-  await login(page2, 'studenta@example.com')
+  await login(page2, SEED.studentA.email)
   await gotoNextMonth(page2)
   const cell = page2.locator(`[data-date="${date}"]`)
   await expect(cell).toHaveClass(/bg-error/) // Blocked styling on the shared calendar
@@ -203,7 +218,7 @@ test('admin blocks a day; student sees it unbookable; sunday never bookable', as
 })
 
 test('admin disconnects Google and returns to Connect state', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   let connected = true
   let deleteRequests = 0
 
@@ -234,7 +249,7 @@ test('admin disconnects Google and returns to Connect state', async ({ page }) =
 })
 
 test('admin disconnect warns when local access ends before Google confirms revocation', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   // The status mock must follow the DELETE, or the card stays "connected" and
   // the Connect button never renders. Pinned to a static connected:true this
   // assertion was unreachable and only "passed" because getByRole matches
@@ -261,7 +276,7 @@ test('admin disconnect warns when local access ends before Google confirms revoc
 })
 
 test('admin keeps connected state when local disconnect fails', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   await page.route('**/api/admin/google/status', route => route.fulfill({
     json: { connected: true, needsReconnect: false },
   }))
@@ -283,7 +298,7 @@ test('admin keeps connected state when local disconnect fails', async ({ page })
 })
 
 test('admin disconnects reconnect-required Google token', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   let needsReconnect = true
 
   await page.route('**/api/admin/google/status', route => route.fulfill({
@@ -337,11 +352,11 @@ test('login shows sanitized Google callback error', async ({ page }) => {
 // name and that name is what the shared calendar shows. Renames back at the end
 // so the suite stays order-independent on the shared database.
 test('admin renames a student and the real name shows on the shared calendar', async ({ page }) => {
-  await login(page, 'teacher@example.com')
+  await login(page, SEED.teacher.email)
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
 
-  const row = page.locator('[data-user-email="studenta@example.com"]')
+  const row = page.locator(`[data-user-email="${SEED.studentA.email}"]`)
   await row.getByPlaceholder('Full name').fill('Tafadzwa Mugweni')
   await row.getByRole('button', { name: 'Save' }).click()
   await expect(row.getByPlaceholder('Full name')).toHaveValue('Tafadzwa Mugweni')
@@ -350,19 +365,34 @@ test('admin renames a student and the real name shows on the shared calendar', a
   // would push the 5th into the following month where gotoNextMonth never lands.
   // Every month has at least four Fridays, and the earlier tests take Thursdays.
   const date = nthWeekdayOfNextMonth(5, 1)
-  const student = await page.context().newPage()
-  await login(student, 'studenta@example.com')
-  await gotoNextMonth(student)
-  await student.locator(`[data-date="${date}"]`).click()
-  await student.getByRole('button', { name: 'Confirm booking' }).click()
-  await expect(student.locator(`[data-date="${date}"]`)).toContainText('Tafadzwa Mugweni')
-  await expect(student.locator(`[data-date="${date}"]`)).not.toContainText('Student A')
+  // A separate browser CONTEXT, not context.newPage(): pages in one context
+  // share cookies, so signing the student in replaced the admin's session cookie
+  // and the restore PUT below came back 403. Asserting the input value hid it.
+  const studentContext = await page.context().browser()!.newContext()
+  const student = await studentContext.newPage()
+  try {
+    await login(student, SEED.studentA.email)
+    await gotoNextMonth(student)
+    await student.locator(`[data-date="${date}"]`).click()
+    await student.getByRole('button', { name: 'Confirm booking' }).click()
+    await expect(student.locator(`[data-date="${date}"]`)).toContainText('Tafadzwa Mugweni')
+    await expect(student.locator(`[data-date="${date}"]`)).not.toContainText(SEED.studentA.name)
 
-  // restore the placeholder so the shared DB is left as the suite expects
-  await row.getByPlaceholder('Full name').fill('Student A')
-  await row.getByRole('button', { name: 'Save' }).click()
-  await expect(row.getByPlaceholder('Full name')).toHaveValue('Student A')
+    // restore the placeholder, then reload so the assertion reads the server's
+    // copy rather than the input we just typed into
+    await row.getByPlaceholder('Full name').fill(SEED.studentA.name)
+    await row.getByRole('button', { name: 'Save' }).click()
+    await page.reload()
+    await expect(page.locator(`[data-user-email="${SEED.studentA.email}"]`)
+      .getByPlaceholder('Full name')).toHaveValue(SEED.studentA.name)
 
-  await student.locator(`[data-date="${date}"]`).click()
-  await student.getByRole('button', { name: 'Cancel' }).click()
+    // Release the booking via My Lessons. The calendar cell opens BookingModal,
+    // whose own "Cancel" just dismisses the dialog — clicking that here left the
+    // booking active and only looked like cleanup.
+    await student.getByRole('link', { name: 'My Lessons' }).click()
+    await student.waitForURL('**/mine')
+    await cancelAllBookings(student)
+  } finally {
+    await studentContext.close()
+  }
 })
