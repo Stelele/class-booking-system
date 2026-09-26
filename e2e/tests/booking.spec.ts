@@ -106,6 +106,42 @@ test('cancel and reschedule from my lessons', async ({ page }) => {
   await expect(page.getByText('No upcoming lessons')).toBeVisible()
 })
 
+test('admin calendar renders the same shared grid as the calendar page', async ({ page }) => {
+  await login(page, 'teacher@example.com')
+  await gotoNextMonth(page)
+
+  const { year, month } = nextMonthParts()
+  const label = new Date(Date.UTC(year, month - 1, 1))
+    .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+
+  const gridShape = async () => {
+    const grid = page.getByRole('region', { name: 'Month calendar' })
+    await expect(grid.locator('h1, h2')).toHaveText(label) // month finished loading
+    const frame = await grid.locator('[data-date]').first().evaluate(cell => {
+      const cells = Array.from(cell.parentElement!.children)
+      return {
+        weekdayHeaders: cells.slice(0, 7).map(c => c.textContent!.trim()),
+        leadingBlanks: cells.slice(0, cells.findIndex(c => c.hasAttribute('data-date')))
+          .filter(c => !c.hasAttribute('data-date') && c.textContent === '').length,
+        cellHeight: cell.className.match(/min-h-\d+/)![0],
+        cellPadding: cell.className.match(/rounded-lg/)![0],
+      }
+    })
+    return { label, ...frame }
+  }
+
+  const calendar = await gridShape()
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+  await gotoNextMonth(page)
+  const admin = await gridShape()
+
+  // same component, so same label, same Monday-first offset, same cell size
+  expect(admin).toEqual(calendar)
+  expect(calendar.weekdayHeaders).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+  expect(calendar.leadingBlanks).toBe((new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7)
+})
+
 test('admin sees Connect Google button when Google is not configured', async ({ page }) => {
   await login(page, 'teacher@example.com')
   await page.getByRole('link', { name: 'Admin' }).click()

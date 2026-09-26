@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, ApiError } from '../composables/useApi'
 import type { SlotDay } from '../composables/useTime'
+import MonthCalendar from '../components/MonthCalendar.vue'
 
 const year = ref(new Date().getFullYear())
 const month = ref(new Date().getMonth() + 1)
@@ -72,17 +73,6 @@ async function backupNow() {
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Backup failed'
   } finally { backingUp.value = false }
-}
-
-// theme tokens; occupancy grid = the documented custom exception
-const cellClass: Record<SlotDay['state'], string> = {
-  Bookable: 'bg-success/10 hover:bg-success/20',
-  Booked: 'bg-info/10',
-  Combined: 'bg-primary/10',
-  Sunday: 'bg-elevated/50 text-dimmed',
-  Blocked: 'bg-error/10 text-error ring ring-error/15',
-  Past: 'bg-elevated/50 text-dimmed/60',
-  Cutoff: 'bg-warning/10 text-warning',
 }
 
 // days with existing bookings can't be (un)blocked — cancel/see calendar instead
@@ -227,32 +217,15 @@ onMounted(() => {
       </UButton>
     </div>
 
-    <div class="mb-4 flex items-center justify-between">
-      <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" aria-label="Previous month" @click="shift(-1)" />
-      <span class="font-semibold text-highlighted">{{ year }}-{{ String(month).padStart(2, '0') }}</span>
-      <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" aria-label="Next month" @click="shift(1)" />
-    </div>
-
-    <UAlert
-      v-if="error"
-      color="error" variant="subtle" icon="i-lucide-circle-alert"
-      title="Couldn't apply the change" :description="error"
-      class="mb-4"
-    />
-
-    <div v-if="loading" class="grid grid-cols-7 gap-1">
-      <USkeleton v-for="i in 35" :key="i" class="min-h-16" />
-    </div>
-
-    <div v-else class="grid grid-cols-7 gap-1 text-center text-sm">
-      <div v-for="day in days" :key="day.date" :data-date="day.date"
-           class="flex min-h-16 flex-col items-center justify-start rounded-lg p-2"
-           :class="[cellClass[day.state], toggleable(day) ? 'cursor-pointer' : '']"
-           @click="toggle(day)">
-        <span class="font-semibold">{{ day.date.slice(-2) }}</span>
+    <MonthCalendar
+      :year="year" :month="month" :days="days" :loading="loading" :error="error"
+      error-title="Couldn't apply the change" :interactive="toggleable" :heading-level="2"
+      @shift="shift" @select="toggle"
+    >
+      <template #cell="{ day }">
         <UBadge v-if="day.state === 'Blocked'" color="error" variant="soft" size="sm" class="mt-1">blocked</UBadge>
-      </div>
-    </div>
+      </template>
+    </MonthCalendar>
 
     <UCard variant="outline" class="mt-6">
       <template #header>
