@@ -121,7 +121,7 @@ public sealed class BookingLifecycleTests
         await using var db = NewDb();
         var movingStudentId = Guid.NewGuid();
         var oldDate = FutureDate(34);
-        var newDate = FutureDate(35);
+        var newDate = FutureDate(35, oldDate);
         var (_, movingBooking) = await SeedAsync(
             db, oldDate, movingStudentId, "https://meet.google.com/old", "old-event");
         var targetSlot = new Slot
@@ -152,7 +152,7 @@ public sealed class BookingLifecycleTests
         var movingStudentId = Guid.NewGuid();
         var targetStudentId = Guid.NewGuid();
         var oldDate = FutureDate(36);
-        var targetDate = FutureDate(37);
+        var targetDate = FutureDate(37, oldDate);
         var (_, movingBooking) = await SeedAsync(
             db, oldDate, movingStudentId, "https://meet.google.com/old", "old-event");
         var (targetSlot, _) = await SeedAsync(
@@ -176,7 +176,7 @@ public sealed class BookingLifecycleTests
         await using var db = NewDb();
         var studentId = Guid.NewGuid();
         var oldDate = FutureDate(32);
-        var newDate = FutureDate(33);
+        var newDate = FutureDate(33, oldDate);
         var (oldSlot, booking) = await SeedAsync(
             db, oldDate, studentId, "https://meet.google.com/old", "old-event");
         var provider = new RecordingMeetLinkProvider();
@@ -201,7 +201,7 @@ public sealed class BookingLifecycleTests
         var movingStudentId = Guid.NewGuid();
         var stayingStudentId = Guid.NewGuid();
         var oldDate = FutureDate(34);
-        var newDate = FutureDate(35);
+        var newDate = FutureDate(35, oldDate);
         var (oldSlot, movingBooking) = await SeedAsync(
             db, oldDate, movingStudentId, "https://meet.google.com/shared", "shared-event");
         var stayingBooking = new Booking
@@ -232,7 +232,7 @@ public sealed class BookingLifecycleTests
         var movingStudentId = Guid.NewGuid();
         var targetStudentId = Guid.NewGuid();
         var oldDate = FutureDate(36);
-        var targetDate = FutureDate(37);
+        var targetDate = FutureDate(37, oldDate);
         var (oldSlot, movingBooking) = await SeedAsync(
             db, oldDate, movingStudentId, "https://meet.google.com/old", "old-event");
         var (targetSlot, _) = await SeedAsync(
@@ -284,11 +284,32 @@ public sealed class BookingLifecycleTests
         return new AppDbContext(options);
     }
 
-    private static DateOnly FutureDate(int daysAhead)
+    // Sundays have no lessons, so they are skipped. Pass the previous date as
+    // `after` whenever a test needs two distinct days: skipping a Sunday by
+    // adding one can otherwise land on the very date the next offset returns.
+    private static DateOnly FutureDate(int daysAhead, DateOnly? after = null)
     {
         var date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(daysAhead);
-        while (date.DayOfWeek == DayOfWeek.Sunday) date = date.AddDays(1);
+        while (date.DayOfWeek == DayOfWeek.Sunday || (after is not null && date <= after))
+        {
+            date = date.AddDays(1);
+        }
         return date;
+    }
+
+    [Fact]
+    public void FutureDate_gives_distinct_non_sundays_for_consecutive_offsets()
+    {
+        for (var ahead = 1; ahead <= 60; ahead++)
+        {
+            var date = FutureDate(ahead);
+            var next = FutureDate(ahead + 1, date);
+            Assert.NotEqual(DayOfWeek.Sunday, date.DayOfWeek);
+            Assert.NotEqual(DayOfWeek.Sunday, next.DayOfWeek);
+            Assert.True(
+                next > date,
+                $"FutureDate({ahead + 1}) must stay after FutureDate({ahead}); both landed on {date:yyyy-MM-dd}");
+        }
     }
 
     private static async Task<(Slot Slot, Booking Booking)> SeedAsync(
