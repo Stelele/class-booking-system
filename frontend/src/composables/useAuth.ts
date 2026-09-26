@@ -5,9 +5,18 @@ export interface Me { id: string; name: string; email: string; role: 'Admin' | '
 
 export const user = ref<Me | null>(null)
 
+// main.ts mounts the app inside loadMe().finally(), so while this promise is
+// pending there is no UI at all. Bound the wait, otherwise a backend that
+// accepts the connection and never answers leaves every visitor on a blank
+// page. A timeout degrades to "logged out" and the login screen renders.
+const BOOT_TIMEOUT_MS = 10_000
+
 export async function loadMe() {
-  try { user.value = await api<Me>('/auth/me') }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), BOOT_TIMEOUT_MS)
+  try { user.value = await api<Me>('/auth/me', { signal: controller.signal }) }
   catch { user.value = null }
+  finally { clearTimeout(timer) }
 }
 
 export async function requestCode(email: string) {

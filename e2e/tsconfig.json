@@ -1,0 +1,19 @@
+// Playwright specs run in Node. Type-checking them caught a bad weekday
+// argument that no other gate noticed: playwright transpiles without checking
+// types, so `nthWeekdayOfNextMonth(5, 1)` sailed past a `0 | 4` parameter type.
+{
+  "extends": "@tsconfig/node24/tsconfig.json",
+  "include": ["playwright.config.ts", "tests/**/*.ts"],
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    // these specs evaluate code inside the page, so DOM globals must be typed —
+    // without DOM, HTMLCollection elements degrade to `unknown`
+    "lib": ["ES2023", "DOM"],
+    "noEmit": true,
+    // keep parity with the app so a spec cannot rely on looser rules than the code it drives
+    "strict": true,
+    "noUncheckedIndexedAccess": true
+  }
+}
