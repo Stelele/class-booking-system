@@ -2,7 +2,11 @@ language: en-US
 early_access: false
 reviews:
   profile: chill
-  request_changes_workflow: true
+  # false: post findings as comments instead of CHANGES_REQUESTED. The bot
+  # acknowledged both fixes on #12 but never cleared its own change request,
+  # which hard-blocked the merge via the "Only Prs" ruleset. A bot should not
+  # hold the gate on a review it has already said is resolved.
+  request_changes_workflow: false
   high_level_summary: true
   poem: false
   review_status: true
