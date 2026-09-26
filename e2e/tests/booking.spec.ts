@@ -27,11 +27,17 @@ function nextMonthParts(): { year: number; month: number } {
     : { year: now.getFullYear(), month: now.getMonth() + 2 }
 }
 
-function nthWeekdayOfNextMonth(weekday: 0 | 4, n: number): string {
+// 0 = Sunday, 4 = Thursday, 5 = Friday. Every month has at least four of each
+// weekday, so n <= 4 always lands inside the displayed month — which is what
+// gotoNextMonth reaches. The guard turns "n too large" into a named error
+// instead of a silently missing [data-date] locator.
+function nthWeekdayOfNextMonth(weekday: 0 | 4 | 5, n: number): string {
   const { year, month } = nextMonthParts()
   const d = new Date(Date.UTC(year, month - 1, 1))
   while (d.getUTCDay() !== weekday) d.setUTCDate(d.getUTCDate() + 1)
   d.setUTCDate(d.getUTCDate() + (n - 1) * 7)
+  if (d.getUTCMonth() !== month - 1)
+    throw new Error(`nthWeekdayOfNextMonth(${weekday}, ${n}) fell outside next month — use n <= 4.`)
   return d.toISOString().slice(0, 10)
 }
 
@@ -310,7 +316,10 @@ test('admin renames a student and the real name shows on the shared calendar', a
   await row.getByRole('button', { name: 'Save' }).click()
   await expect(row.getByPlaceholder('Full name')).toHaveValue('Tafadzwa Mugweni')
 
-  const date = nthWeekdayOfNextMonth(4, 5) // 5th Thursday — free after the earlier tests
+  // 1st FRIDAY, not a 5th Thursday: a month can have only four Thursdays, which
+  // would push the 5th into the following month where gotoNextMonth never lands.
+  // Every month has at least four Fridays, and the earlier tests take Thursdays.
+  const date = nthWeekdayOfNextMonth(5, 1)
   const student = await page.context().newPage()
   await login(student, 'studenta@example.com')
   await gotoNextMonth(student)
