@@ -174,7 +174,7 @@ test('admin sees Connect Google button when Google is not configured', async ({ 
   await login(page, 'teacher@example.com')
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
-  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible()
   const statusRes = await page.request.get('/api/admin/google/status');
   expect(statusRes.ok()).toBeTruthy();
   const status = await statusRes.json();
@@ -229,18 +229,26 @@ test('admin disconnects Google and returns to Connect state', async ({ page }) =
   await confirmDisconnect(page)
 
   await expect(page.getByText('Google disconnected. New bookings use the fallback link.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible()
   expect(deleteRequests).toBe(1)
 })
 
 test('admin disconnect warns when local access ends before Google confirms revocation', async ({ page }) => {
   await login(page, 'teacher@example.com')
+  // The status mock must follow the DELETE, or the card stays "connected" and
+  // the Connect button never renders. Pinned to a static connected:true this
+  // assertion was unreachable and only "passed" because getByRole matches
+  // names as substrings, so "Connect Google" matched "Disconnect Google".
+  let connected = true
+
   await page.route('**/api/admin/google/status', route => route.fulfill({
-    json: { connected: true, needsReconnect: false },
+    json: { connected, needsReconnect: false },
   }))
-  await page.route('**/api/admin/google', route => route.fulfill({
-    json: { remoteRevoked: false },
-  }))
+  await page.route('**/api/admin/google', async route => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    connected = false
+    await route.fulfill({ json: { remoteRevoked: false } })
+  })
 
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
@@ -249,7 +257,7 @@ test('admin disconnect warns when local access ends before Google confirms revoc
 
   await expect(page.getByText(/Google did not confirm revocation/)).toBeVisible()
   await expect(page.getByText(/Google Account Settings/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible()
 })
 
 test('admin keeps connected state when local disconnect fails', async ({ page }) => {
@@ -294,7 +302,7 @@ test('admin disconnects reconnect-required Google token', async ({ page }) => {
   await page.getByRole('button', { name: 'Disconnect Google' }).click()
   await confirmDisconnect(page)
 
-  await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible()
   expect(needsReconnect).toBe(false)
 })
 
