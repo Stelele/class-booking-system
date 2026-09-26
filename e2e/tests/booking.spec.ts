@@ -296,3 +296,34 @@ test('login shows sanitized Google callback error', async ({ page }) => {
   await expect(page.getByText('Google sign-in failed. Use the email code below or try again.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
 })
+
+// The headline fix: the admin replaces the "Student A" placeholder with a real
+// name and that name is what the shared calendar shows. Renames back at the end
+// so the suite stays order-independent on the shared database.
+test('admin renames a student and the real name shows on the shared calendar', async ({ page }) => {
+  await login(page, 'teacher@example.com')
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+
+  const row = page.locator('[data-user-email="studenta@example.com"]')
+  await row.getByPlaceholder('Full name').fill('Tafadzwa Mugweni')
+  await row.getByRole('button', { name: 'Save' }).click()
+  await expect(row.getByPlaceholder('Full name')).toHaveValue('Tafadzwa Mugweni')
+
+  const date = nthWeekdayOfNextMonth(4, 5) // 5th Thursday — free after the earlier tests
+  const student = await page.context().newPage()
+  await login(student, 'studenta@example.com')
+  await gotoNextMonth(student)
+  await student.locator(`[data-date="${date}"]`).click()
+  await student.getByRole('button', { name: 'Confirm booking' }).click()
+  await expect(student.locator(`[data-date="${date}"]`)).toContainText('Tafadzwa Mugweni')
+  await expect(student.locator(`[data-date="${date}"]`)).not.toContainText('Student A')
+
+  // restore the placeholder so the shared DB is left as the suite expects
+  await row.getByPlaceholder('Full name').fill('Student A')
+  await row.getByRole('button', { name: 'Save' }).click()
+  await expect(row.getByPlaceholder('Full name')).toHaveValue('Student A')
+
+  await student.locator(`[data-date="${date}"]`).click()
+  await student.getByRole('button', { name: 'Cancel' }).click()
+})

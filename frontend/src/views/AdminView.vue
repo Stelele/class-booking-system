@@ -2,8 +2,13 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, ApiError } from '../composables/useApi'
+import { user as currentUser } from '../composables/useAuth'
 import type { SlotDay } from '../composables/useTime'
 import MonthCalendar from '../components/MonthCalendar.vue'
+
+interface AdminUser {
+  id: string; name: string; email: string; phone: string | null; role: 'Admin' | 'Student'
+}
 
 const year = ref(new Date().getFullYear())
 const month = ref(new Date().getMonth() + 1)
@@ -26,6 +31,47 @@ const googleNoticeError = ref(false)
 const googleDisconnectOpen = ref(false)
 const googleDisconnecting = ref(false)
 const googleNoticeWarning = ref(false)
+
+const people = ref<AdminUser[]>([])
+const drafts = ref<Record<string, { name: string; email: string; phone: string }>>({})
+const peopleError = ref('')
+const savingId = ref('')
+
+async function loadPeople() {
+  try {
+    const rows = await api<AdminUser[]>('/admin/users')
+    people.value = rows
+    // editable copies — the inputs own their own state until Save is pressed
+    drafts.value = Object.fromEntries(rows.map(r => [r.id, {
+      name: r.name, email: r.email, phone: r.phone ?? '',
+    }]))
+  } catch (e: unknown) {
+    peopleError.value = e instanceof ApiError ? e.message : 'Could not load people.'
+  }
+}
+
+async function savePerson(id: string) {
+  const draft = drafts.value[id]
+  if (!draft) return
+  savingId.value = id
+  peopleError.value = ''
+  try {
+    const updated = await api<AdminUser>(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: draft.name, email: draft.email, phone: draft.phone }),
+    })
+    const i = people.value.findIndex(p => p.id === id)
+    if (i >= 0) people.value[i] = updated
+    drafts.value[id] = { name: updated.name, email: updated.email, phone: updated.phone ?? '' }
+    // the session badge is only refreshed at boot, so a self-rename has to be
+    // pushed into the shared auth ref by hand
+    if (updated.id === currentUser.value?.id) currentUser.value = { ...currentUser.value, ...updated }
+  } catch (e: unknown) {
+    peopleError.value = e instanceof ApiError ? e.message : 'Save failed.'
+  } finally {
+    savingId.value = ''
+  }
+}
 
 function connectGoogle() {
   window.location.href = '/api/auth/google/start'
@@ -133,7 +179,7 @@ async function doRestore() {
 }
 
 onMounted(() => {
-  load(); loadBackup(); loadGoogleStatus()
+  load(); loadBackup(); loadGoogleStatus(); loadPeople()
   const g = route.query.google
   if (g === 'connected') { googleNotice.value = 'Google connected — new lessons get Meet links.'; googleNoticeError.value = false }
   else if (g === 'error') { googleNotice.value = 'Google connect failed — please try again.'; googleNoticeError.value = true }
@@ -216,6 +262,64 @@ onMounted(() => {
         Connect Google
       </UButton>
     </div>
+
+    <UCard variant="outline" class="mb-6">
+      <template #header>
+        <h2 class="font-semibold text-highlighted">People</h2>
+        <p class="text-muted text-sm">
+          These names show on the shared calendar, in WhatsApp reminders and on the Meet invites.
+        </p>
+      </template>
+
+      <UAlert
+        v-if="peopleError"
+        color="error" variant="subtle" icon="i-lucide-circle-alert"
+        :title="peopleError" class="mb-4"
+      />
+
+      <div v-if="!people.length && !peopleError" class="text-muted text-sm">Loading…</div>
+
+      <div v-for="p in people" :key="p.id" :data-user-email="p.email" class="border-default border-b pb-4 last:border-b-0 last:pb-0">
+        <div class="flex items-center gap-2">
+          <UBadge
+            :color="p.role === 'Admin' ? 'primary' : 'neutral'"
+            variant="subtle" size="sm"
+            :data-role="p.role"
+          >{{ p.role }}</UBadge>
+          <span class="text-muted truncate text-sm">{{ p.email }}</span>
+        </div>
+
+        <div class="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+          <UInput
+            v-model="drafts[p.id]!.name"
+            placeholder="Full name"
+            aria-label="Full name"
+            maxlength="100"
+            class="min-w-0"
+          />
+          <UInput
+            v-model="drafts[p.id]!.email"
+            type="email"
+            placeholder="Email"
+            aria-label="Email"
+            class="min-w-0"
+          />
+          <UInput
+            v-model="drafts[p.id]!.phone"
+            type="tel"
+            placeholder="+447700900123"
+            aria-label="WhatsApp number"
+            class="min-w-0"
+          />
+          <UButton
+            color="primary" icon="i-lucide-check"
+            :loading="savingId === p.id"
+            :data-user-id="p.id"
+            @click="savePerson(p.id)"
+          >Save</UButton>
+        </div>
+      </div>
+    </UCard>
 
     <MonthCalendar
       :year="year" :month="month" :days="days" :loading="loading" :error="error"
