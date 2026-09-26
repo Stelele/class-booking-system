@@ -1,8 +1,14 @@
 {
   "name": "class-booking-e2e",
   "private": true,
-  "scripts": { "test": "playwright test" },
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
-    "@playwright/test": "^1.50.0"
+    "@playwright/test": "^1.50.0",
+    "@tsconfig/node24": "^24.0.5",
+    "@types/node": "^24.13.4",
+    "typescript": "~6.0.0"
   }
 }
