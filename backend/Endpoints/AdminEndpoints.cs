@@ -1,13 +1,13 @@
 using Application.Abstractions;
 using Application.BlockedDays;
-using Microsoft.EntityFrameworkCore;
+using Application.Users;
 
 namespace Endpoints;
 
 public static class AdminEndpoints
 {
     public sealed record BlockRequest(DateOnly Date, string? Reason);
-    public sealed record PhoneRequest(string Email, string Phone);
+    public sealed record UpdateUserRequest(string Name, string Email, string? Phone);
 
     public static IEndpointRouteBuilder MapAdmin(this IEndpointRouteBuilder app)
     {
@@ -56,15 +56,17 @@ public static class AdminEndpoints
             }
         });
 
-        group.MapPost("/users/phone", async (PhoneRequest req, IAppDbContext db, CancellationToken ct) =>
+        group.MapGet("/users", async (ISender sender, CancellationToken ct) =>
+            Results.Ok(await sender.Send(new ListUsersQuery(), ct)));
+
+        group.MapPut("/users/{id:guid}", async (Guid id, UpdateUserRequest req, ISender sender, CancellationToken ct) =>
         {
-            if (!System.Text.RegularExpressions.Regex.IsMatch(req.Phone ?? "", @"^\+\d{7,15}$"))
-                return Results.BadRequest(new { error = "Phone must be E.164, e.g. +447700900123." });
-            var user = await db.Users.FirstOrDefaultAsync(u => u.Email == req.Email.Trim().ToLower(), ct);
-            if (user is null) return Results.NotFound(new { error = "No such user." });
-            user.PhoneE164 = req.Phone;
-            await db.SaveChangesAsync(ct);
-            return Results.Ok(new { ok = true });
+            try
+            {
+                return Results.Ok(await sender.Send(new UpdateUserCommand(id, req.Name, req.Email, req.Phone), ct));
+            }
+            catch (UserNotFoundException ex) { return Results.NotFound(new { error = ex.Message }); }
+            catch (UserException ex) { return Results.BadRequest(new { error = ex.Message }); }
         });
 
         return app;
