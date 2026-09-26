@@ -43,6 +43,28 @@ function nthWeekdayOfNextMonth(weekday: 0 | 4 | 5, n: number): string {
 
 async function gotoNextMonth(page: Page) {
   await page.getByRole('button', { name: 'Next month' }).click()
+
+}
+
+// The disconnect modal's confirm button carries the same label as the card
+// button that opens it, and the modal re-renders while the status fetch
+// settles — so `.last()` could resolve onto an element Vue then swapped out
+// ("element is not stable" / "detached from the DOM"). Scope to the dialog and
+// wait for it to mount so the click target is stable.
+async function openModalDialog(page: Page) {
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+async function confirmDisconnect(page: Page) {
+  const dialog = await openModalDialog(page)
+  await dialog.getByRole('button', { name: 'Disconnect Google' }).click()
+}
+
+async function cancelDialog(page: Page) {
+  const dialog = await openModalDialog(page)
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
 }
 
 test('student logs in, books, sees name on shared calendar', async ({ page }) => {
@@ -200,11 +222,11 @@ test('admin disconnects Google and returns to Connect state', async ({ page }) =
   await expect(page.getByText('calendar.events.owned')).toBeVisible()
   await page.getByRole('button', { name: 'Disconnect Google' }).click()
   await expect(page.getByText('Disconnect Google Calendar?')).toBeVisible()
-  await page.getByRole('button', { name: 'Cancel' }).click()
+  await cancelDialog(page)
   expect(deleteRequests).toBe(0)
 
   await page.getByRole('button', { name: 'Disconnect Google' }).click()
-  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+  await confirmDisconnect(page)
 
   await expect(page.getByText('Google disconnected. New bookings use the fallback link.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
@@ -223,7 +245,7 @@ test('admin disconnect warns when local access ends before Google confirms revoc
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
   await page.getByRole('button', { name: 'Disconnect Google' }).click()
-  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+  await confirmDisconnect(page)
 
   await expect(page.getByText(/Google did not confirm revocation/)).toBeVisible()
   await expect(page.getByText(/Google Account Settings/)).toBeVisible()
@@ -243,9 +265,9 @@ test('admin keeps connected state when local disconnect fails', async ({ page })
   await page.getByRole('link', { name: 'Admin' }).click()
   await page.waitForURL('**/admin')
   await page.getByRole('button', { name: 'Disconnect Google' }).click()
-  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+  await confirmDisconnect(page)
   await expect(page.getByText('Disconnect Google Calendar?')).toBeVisible()
-  await page.getByRole('button', { name: 'Cancel' }).click()
+  await cancelDialog(page)
 
   await expect(page.getByText('Could not disconnect Google.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Disconnect Google' })).toBeVisible()
@@ -270,7 +292,7 @@ test('admin disconnects reconnect-required Google token', async ({ page }) => {
   await expect(page.getByText('Reconnect required').first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reconnect Google' })).toBeVisible()
   await page.getByRole('button', { name: 'Disconnect Google' }).click()
-  await page.getByRole('button', { name: 'Disconnect Google' }).last().click()
+  await confirmDisconnect(page)
 
   await expect(page.getByRole('button', { name: 'Connect Google' })).toBeVisible()
   expect(needsReconnect).toBe(false)
