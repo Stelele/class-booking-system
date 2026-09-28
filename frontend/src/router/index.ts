@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { user } from '../composables/useAuth'
+import { attemptRecovery, isChunkLoadError } from './chunkRecovery'
 
 declare module 'vue-router' {
   interface RouteMeta { auth?: boolean; admin?: boolean }
@@ -21,6 +22,17 @@ const router = createRouter({
 router.beforeEach((to) => {
   if (to.meta.auth && !user.value) return '/login'
   if (to.meta.admin && user.value?.role !== 'Admin') return '/calendar'
+})
+
+// A lazy route import is the only place version skew surfaces: the entry
+// chunk loaded fine at page load, then the chunk for the route the user just
+// opened is gone. Reload onto the current build rather than leaving them on a
+// dead route — see chunkRecovery.ts for why this fires at most once.
+router.onError((error) => {
+  if (isChunkLoadError(error) && attemptRecovery()) return
+  // Nothing left to try: either it is not version skew, or the reload did not
+  // fix it. Surfacing it beats silently rendering a blank route.
+  console.error('[router] navigation failed', error)
 })
 
 export default router
