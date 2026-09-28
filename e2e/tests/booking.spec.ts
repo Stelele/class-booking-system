@@ -275,10 +275,42 @@ test('admin disconnect warns when local access ends before Google confirms revoc
   await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible()
 })
 
+// Regression: production ran with the Meet provider left at its "fixed"
+// default while the admin UI reported Google as connected. Bookings silently
+// used the fallback Meet link and created no calendar event, and the two
+// states were indistinguishable. The status response now carries the provider.
+test('admin is warned when Google is connected but events are disabled', async ({ page }) => {
+  await login(page, SEED.teacher.email)
+  await page.route('**/api/admin/google/status', route => route.fulfill({
+    json: { connected: true, needsReconnect: false, meetProvider: 'fixed', eventsEnabled: false },
+  }))
+
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+
+  await expect(page.getByText('Calendar events are not being created')).toBeVisible()
+  await expect(page.getByText(/MEET_PROVIDER=google/)).toBeVisible()
+  // still connected, so disconnect stays available
+  await expect(page.getByRole('button', { name: 'Disconnect Google' })).toBeVisible()
+})
+
+test('admin sees no warning when events are enabled', async ({ page }) => {
+  await login(page, SEED.teacher.email)
+  await page.route('**/api/admin/google/status', route => route.fulfill({
+    json: { connected: true, needsReconnect: false, meetProvider: 'google', eventsEnabled: true },
+  }))
+
+  await page.getByRole('link', { name: 'Admin' }).click()
+  await page.waitForURL('**/admin')
+
+  await expect(page.getByText('Connected', { exact: true })).toBeVisible()
+  await expect(page.getByText('Calendar events are not being created')).toHaveCount(0)
+})
+
 test('admin keeps connected state when local disconnect fails', async ({ page }) => {
   await login(page, SEED.teacher.email)
   await page.route('**/api/admin/google/status', route => route.fulfill({
-    json: { connected: true, needsReconnect: false },
+    json: { connected: true, needsReconnect: false, meetProvider: 'google', eventsEnabled: true },
   }))
   await page.route('**/api/admin/google', route => route.fulfill({
     status: 500,
@@ -294,7 +326,7 @@ test('admin keeps connected state when local disconnect fails', async ({ page })
 
   await expect(page.getByText('Could not disconnect Google.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Disconnect Google' })).toBeVisible()
-  await expect(page.getByText('Connected')).toBeVisible()
+  await expect(page.getByText('Connected', { exact: true })).toBeVisible()
 })
 
 test('admin disconnects reconnect-required Google token', async ({ page }) => {

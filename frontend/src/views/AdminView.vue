@@ -113,7 +113,9 @@ async function loadGoogleStatus() {
     }>('/admin/google/status')
     googleConnected.value = res.connected
     googleNeedsReconnect.value = res.needsReconnect
-    googleEventsEnabled.value = res.eventsEnabled
+    // Only an explicit false disables events. Defaulting a missing field to
+    // "disabled" would raise a false alarm against an older/stale response.
+    googleEventsEnabled.value = res.eventsEnabled !== false
   } catch {
     googleConnected.value = false
     googleNeedsReconnect.value = false
