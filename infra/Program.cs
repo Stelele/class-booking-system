@@ -12,7 +12,9 @@
 //   write-ssh-key : decode DO_SSH_KEY (base64) → /tmp/do_key on the runner
 //   write-env     : build /opt/class-booking/.env locally, scp it (0600);
 //                   secrets never enter a command string, a log, or state
-//   deploy        : scp docker-compose.yml → `docker compose pull && up -d`
+//   deploy        : scp docker-compose.yml → `docker compose pull && up -d`,
+//                   retaining the running build's hashed chunks across the swap
+//                   so an in-flight tab's lazy route imports still resolve
 //   nginx-vhost   : vhost proxying {domain} → 127.0.0.1:8081, nginx reload
 //
 // write-ssh-key and deploy carry a per-run trigger (runStamp): the CI runner is
@@ -136,11 +138,58 @@ return await Deployment.RunAsync(() =>
 
     // ── resource 3: deploy ──────────────────────────────────────────────────
     var composePath = Path.GetFullPath("docker-compose.yml"); // CWD = infra/
+    var deployScript = """
+        set -euo pipefail
+        cd /opt/class-booking
+        SVC=frontend
+        STASH=/opt/class-booking/retained-assets
+        KEEP=3
+
+        docker compose pull
+
+        # Each deploy replaces the whole dist, so every content-hashed chunk
+        # name changes. A tab still running the previous build asks for exactly
+        # the names we are about to delete, and its lazy route import then dies.
+        # Stash the running build's chunks first and re-inject them after the
+        # swap, so an in-flight tab finishes its navigation instead of 404ing.
+        # Keyed by image id: a rebuild that produced identical output must not
+        # evict assets the running build is still serving.
+        mkdir -p "$STASH"
+        if running=$(docker compose ps -q "$SVC" 2>/dev/null) && [ -n "$running" ]; then
+          # ':' would make the stash path ambiguous to `docker cp` (src:dst)
+          image=$(docker inspect -f '{{.Image}}' "$running" | tr -c 'A-Za-z0-9' '-')
+          if [ -n "$image" ]; then
+            rm -rf "$STASH/$image"
+            mkdir -p "$STASH/$image"
+            docker cp "$running:/usr/share/nginx/html/assets/." "$STASH/$image/" || true
+          fi
+        fi
+
+        docker compose up -d
+
+        # Serve the retained builds next to the new one. A file that a later
+        # build deleted stays reachable, so the served set converges to the
+        # union of the retained generations rather than shrinking — a few KB
+        # per renamed chunk, in exchange for no in-flight tab ever 404ing.
+        # Best-effort: a failed injection costs one reload for that tab, and
+        # must never fail the deploy itself.
+        if [ -d "$STASH" ]; then
+          if fresh=$(docker compose ps -q "$SVC" 2>/dev/null) && [ -n "$fresh" ]; then
+            for dir in "$STASH"/*/; do
+              [ -d "$dir" ] || continue
+              docker cp "$dir." "$fresh:/usr/share/nginx/html/assets/" || true
+            done
+          fi
+          # bound the stash: retention is only needed across one or two deploys
+          ls -1dt "$STASH"/*/ 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -rf || true
+        fi
+        """;
+
     var deploy = new LocalCommand("deploy", new LocalCommandArgs
     {
         Create = string.Join(" && ",
             Scp(composePath, "/opt/class-booking/docker-compose.yml"),
-            Ssh("cd /opt/class-booking && docker compose pull && docker compose up -d")),
+            $"{Ssh("bash -s")} <<'DEPLOY_EOF'\n{deployScript}\nDEPLOY_EOF"),
         Interpreter = { "/bin/bash", "-c" },
         Triggers = { { "runStamp", runStamp } }, // re-pull :latest on every up
     }, new CustomResourceOptions { DependsOn = { writeEnv } });
