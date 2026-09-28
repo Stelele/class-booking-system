@@ -113,5 +113,59 @@ public class GoogleAuthFlowTests
 
     private sealed record GoogleDisconnectResponse(bool RemoteRevoked);
 
-    private sealed record GoogleStatus(bool Connected, bool NeedsReconnect);
+    private static readonly string ValidTokenKey =
+        Convert.ToBase64String(new byte[32]);
+
+    private sealed record GoogleStatus(
+        bool Connected, bool NeedsReconnect, string MeetProvider, bool EventsEnabled);
+
+    // Regression: production ran with the Meet provider left at its "fixed"
+    // default while the admin UI showed Google as connected. The account really
+    // was connected, but bookings silently used the fallback link and created no
+    // calendar event, and nothing distinguished the two states.
+    [Fact]
+    public async Task Status_reports_events_disabled_in_fixed_mode()
+    {
+        var client = _factory.CreateClient();
+        await LoginAsTeacherAsync(client);
+
+        var body = await client.GetFromJsonAsync<GoogleStatus>("/api/admin/google/status");
+
+        Assert.NotNull(body);
+        Assert.Equal("fixed", body!.MeetProvider);
+        Assert.False(body.EventsEnabled);
+    }
+
+    [Fact]
+    public async Task Status_reports_events_enabled_in_google_mode()
+    {
+        // google mode validates Google:TokenKey at DI time and throws loudly
+        // without it, so supply a valid 32-byte key.
+        using var googleFactory = _factory.WithWebHostBuilder(b => b
+            .UseSetting("App:Meet:Provider", "google")
+            .UseSetting("Google:TokenKey", ValidTokenKey));
+        var client = googleFactory.CreateClient();
+        await LoginAsTeacherAsync(client);
+
+        var body = await client.GetFromJsonAsync<GoogleStatus>("/api/admin/google/status");
+
+        Assert.NotNull(body);
+        Assert.Equal("google", body!.MeetProvider);
+        Assert.True(body.EventsEnabled);
+    }
+
+    [Fact]
+    public async Task Google_mode_is_case_insensitive()
+    {
+        using var googleFactory = _factory.WithWebHostBuilder(b => b
+            .UseSetting("App:Meet:Provider", "Google")
+            .UseSetting("Google:TokenKey", ValidTokenKey));
+        var client = googleFactory.CreateClient();
+        await LoginAsTeacherAsync(client);
+
+        var body = await client.GetFromJsonAsync<GoogleStatus>("/api/admin/google/status");
+
+        Assert.Equal("google", body!.MeetProvider);
+        Assert.True(body.EventsEnabled);
+    }
 }
