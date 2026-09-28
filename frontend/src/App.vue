@@ -24,8 +24,21 @@ const footerItems: NavigationMenuItem[] = [
 
 <template>
   <UApp>
-    <div class="min-h-screen flex flex-col bg-default">
-      <UHeader title="Lesson Booking" to="/calendar">
+    <!--
+      viewport-fit=cover + black-translucent lets the page run under the notch
+      and home indicator, so the shell is inset by the safe-area variables.
+    -->
+    <div
+      class="min-h-screen flex flex-col bg-default"
+      :style="{
+        paddingLeft: 'var(--safe-left)',
+        paddingRight: 'var(--safe-right)',
+      }"
+    >
+      <UHeader
+        title="Lesson Booking" to="/calendar"
+        :style="{ paddingTop: 'var(--safe-top)' }"
+      >
         <UNavigationMenu v-if="user" :items="navItems" />
 
         <template #right>
@@ -47,7 +60,7 @@ const footerItems: NavigationMenuItem[] = [
         </UContainer>
       </main>
 
-      <UFooter>
+      <UFooter :style="{ paddingBottom: 'var(--safe-bottom)' }">
         <template #left>
           <p class="text-muted text-sm">Evening programming lessons · 20:30 Harare</p>
         </template>

@@ -19,6 +19,7 @@ public interface IAppDbContext
     DbSet<BackupLog> BackupLogs { get; }
     DbSet<GoogleToken> GoogleTokens { get; }
     DbSet<ReminderLog> ReminderLogs { get; }
+    DbSet<PushSubscription> PushSubscriptions { get; }
     ChangeTracker ChangeTracker { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

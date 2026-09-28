@@ -2,7 +2,7 @@
 const sections = [
   {
     title: 'Information we collect',
-    body: 'We collect your email address, optional phone or WhatsApp number, short-lived login codes, and lesson bookings. When the teacher connects Google Calendar, we also store an encrypted Google refresh token, the Google event identifier, event time, and Meet link for lesson events.',
+    body: 'We collect your email address, optional phone number, short-lived login codes, and lesson bookings. If you turn on notifications, we also store a device push subscription (an endpoint URL and two public keys) so the browser can be reached. When the teacher connects Google Calendar, we also store an encrypted Google refresh token, the Google event identifier, event time, and Meet link for lesson events.',
   },
   {
     title: 'Google Calendar',
@@ -10,11 +10,11 @@ const sections = [
   },
   {
     title: 'How information is used and shared',
-    body: 'Information is used to run lessons, authenticate users, display the shared calendar, send login codes and reminders, and create or remove Google Calendar events. We do not use Google data for advertising, profiling, sale, or AI training.',
+    body: 'Information is used to run lessons, authenticate users, display the shared calendar, send login codes and reminders, and create or remove Google Calendar events. We do not use Google data for advertising, profiling, sale, or AI training. Turning notifications off removes your stored device subscriptions; reminders then arrive by email.',
   },
   {
     title: 'Service providers',
-    body: 'The application runs on DigitalOcean. Database backups are stored in Cloudflare R2. Email is delivered through Resend, WhatsApp through Twilio when configured, and Calendar data through Google. These providers process information to provide their services under their own privacy terms.',
+    body: 'The application runs on DigitalOcean. Database backups are stored in Cloudflare R2. Email is delivered through Resend, Calendar data through Google, and notifications through your browser vendor’s push service (Google, Mozilla, Microsoft or Apple, depending on your device) — no message content passes through those services, only an encrypted payload routed to your device. These providers process information to provide their services under their own privacy terms.',
   },
   {
     title: 'Security and retention',

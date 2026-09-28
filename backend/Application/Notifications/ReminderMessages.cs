@@ -2,8 +2,11 @@ using System.Globalization;
 
 namespace Application.Notifications;
 
-/// The 4 WhatsApp wordings (+ cancel/reschedule variants). Pure functions —
-/// these exact texts are submitted as Twilio templates pre-launch.
+/// <summary>
+/// The lesson reminder wordings (plus cancel/reschedule variants). Pure
+/// functions — the same text is delivered as a push notification body and as
+/// the email body, so the wording must read well in both.
+/// </summary>
 public static class ReminderMessages
 {
     private static string Day(DateOnly date) =>

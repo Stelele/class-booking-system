@@ -45,9 +45,9 @@ jobs:
           GOOGLE_REDIRECT_URI: ${{ secrets.GOOGLE_REDIRECT_URI }}
           GOOGLE_LOGIN_REDIRECT_URI: ${{ secrets.GOOGLE_LOGIN_REDIRECT_URI }}
           GOOGLE_TOKEN_KEY: ${{ secrets.GOOGLE_TOKEN_KEY }}
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          PUSH_VAPID_PUBLIC_KEY: ${{ secrets.PUSH_VAPID_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT: ${{ vars.PUSH_VAPID_SUBJECT }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_KEY_ID: ${{ secrets.R2_KEY_ID }}
           R2_SECRET: ${{ secrets.R2_SECRET }}

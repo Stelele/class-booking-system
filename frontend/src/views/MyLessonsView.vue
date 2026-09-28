@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api, ApiError } from '../composables/useApi'
 import { formatDayLocal, type SlotDay } from '../composables/useTime'
+import ReminderSettings from '../components/ReminderSettings.vue'
 
 interface MyBooking {
   id: string; date: string; startUtc: string; originalDate: string | null; meetLink: string | null
@@ -125,5 +126,7 @@ onMounted(load)
         </UCard>
       </template>
     </UModal>
+
+    <ReminderSettings />
   </div>
 </template>
