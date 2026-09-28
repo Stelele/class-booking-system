@@ -19,6 +19,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GoogleToken> GoogleTokens => Set<GoogleToken>();
     public DbSet<BackupLog> BackupLogs => Set<BackupLog>();
     public DbSet<ReminderLog> ReminderLogs => Set<ReminderLog>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -44,6 +45,27 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             e.HasIndex(t => t.UserId).IsUnique();
             e.HasOne<User>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        mb.Entity<PushSubscription>(e =>
+        {
+            // A user may register several devices, so the endpoint is unique,
+            // not the user.
+            e.HasIndex(s => s.Endpoint).IsUnique();
+            e.HasIndex(s => s.UserId);
+            e.HasOne<User>().WithMany().HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(s => s.Endpoint).HasMaxLength(500);
+            e.Property(s => s.P256Dh).HasMaxLength(100);
+            e.Property(s => s.Auth).HasMaxLength(50);
+        });
+        mb.Entity<ReminderLog>(e =>
+        {
+            e.Property(r => r.To).HasMaxLength(200);
+            e.Property(r => r.Template).HasMaxLength(40);
+            e.Property(r => r.Result).HasMaxLength(20);
+            e.Property(r => r.Channel).HasMaxLength(20);
+            e.Property(r => r.ProviderRef).HasMaxLength(200);
+            // No FK: rows predating push notifications may not map to a user.
+            e.HasIndex(r => new { r.UserId, r.Date, r.Template });
         });
     }
 }

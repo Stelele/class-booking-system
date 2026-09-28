@@ -9,7 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TimeZoneConverter;
 
-namespace Infrastructure.WhatsApp;
+namespace Infrastructure.Notifications;
 
 /// Timer worker (BackupWorker pattern): computes next fire across all rhythms,
 /// sleeps until then, sends due reminders with per-recipient isolation.
@@ -98,16 +98,18 @@ public sealed class ReminderService(
         foreach (var f in fires) await SendFireAsync(f, ct);
     }
 
-    private sealed record DueFire(Guid StudentId, string Name, string Phone, DateOnly LessonDate, string Template, string MeetLink, List<(DateOnly date, string localTime)>? Week = null);
+    internal sealed record DueFire(
+        Guid StudentId, string Name, string Email, DateOnly LessonDate,
+        string Template, string MeetLink, List<(DateOnly date, string localTime)>? Week = null);
 
-    private async Task<List<DueFire>> CollectDueFiresAsync(
+    internal async Task<List<DueFire>> CollectDueFiresAsync(
         IAppDbContext db, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
     {
         var fires = new List<DueFire>();
 
+        // Every user is a candidate now — push needs no phone number.
         var students = await db.Users.AsNoTracking()
-            .Where(u => u.PhoneE164 != null)
-            .Select(u => new { u.Id, u.Name, Phone = u.PhoneE164! })
+            .Select(u => new { u.Id, u.Name, u.Email })
             .ToListAsync(ct);
         if (students.Count == 0) return fires;
 
@@ -118,11 +120,15 @@ public sealed class ReminderService(
             .ToListAsync(ct);
         var byStudent = bookings.GroupBy(b => b.StudentId).ToDictionary(g => g.Key, g => g.ToList());
 
+        // Idempotency key is (UserId, Date, Template). Rows written before push
+        // notifications existed were keyed by phone; the migration backfilled
+        // their UserId where it could, and any that could not are ignored here
+        // (a user with no phone never received those reminders anyway).
         var sent = await db.ReminderLogs.AsNoTracking()
-            .Where(r => r.Result == "sent")
-            .Select(r => new { r.To, r.Date, r.Template })
+            .Where(r => r.Result == "sent" && r.UserId != null)
+            .Select(r => new { UserId = r.UserId!.Value, r.Date, r.Template })
             .ToListAsync(ct);
-        var sentKeys = sent.Select(r => (r.To, r.Date, r.Template)).ToHashSet();
+        var sentKeys = sent.Select(r => (r.UserId, r.Date, r.Template)).ToHashSet();
 
         foreach (var s in students)
         {
@@ -137,8 +143,8 @@ public sealed class ReminderService(
                     if ((f.Template == "morning" && !Enabled("Morning")) ||
                         (f.Template == "evening" && !Enabled("Evening")))
                         continue;
-                    if (sentKeys.Contains((s.Phone, b.Date, f.Template))) continue;
-                    fires.Add(new DueFire(s.Id, s.Name, s.Phone, b.Date, f.Template, b.MeetLink ?? ""));
+                    if (sentKeys.Contains((s.Id, b.Date, f.Template))) continue;
+                    fires.Add(new DueFire(s.Id, s.Name, s.Email, b.Date, f.Template, b.MeetLink ?? ""));
                 }
             }
 
@@ -155,45 +161,47 @@ public sealed class ReminderService(
                         .OrderBy(b => b.Date)
                         .Select(b => (b.Date, ReminderSchedule.StudentLocalTime(b.Date)))
                         .ToList();
-                    if (week.Count > 0 && !sentKeys.Contains((s.Phone, weekStart, "monday")))
-                        fires.Add(new DueFire(s.Id, s.Name, s.Phone, weekStart, "monday", "", week));
+                    if (week.Count > 0 && !sentKeys.Contains((s.Id, weekStart, "monday")))
+                        fires.Add(new DueFire(s.Id, s.Name, s.Email, weekStart, "monday", "", week));
                 }
             }
         }
         return fires;
     }
 
-    private async Task SendFireAsync(DueFire f, CancellationToken ct)
+    internal async Task SendFireAsync(DueFire f, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
         var sp = scope.ServiceProvider;
         var db = sp.GetRequiredService<IAppDbContext>();
-        var twilio = sp.GetRequiredService<ITwilioSender>();
+        var notifier = sp.GetRequiredService<INotifier>();
 
-        var (template, body) = f.Template switch
+        var (template, body, urgency) = f.Template switch
         {
             "morning" => ("morning", ReminderMessages.MorningNudge(
-                f.Name, ReminderSchedule.StudentLocalTime(f.LessonDate), f.MeetLink)),
+                f.Name, ReminderSchedule.StudentLocalTime(f.LessonDate), f.MeetLink), NotifyUrgency.Normal),
             "evening" => ("evening", ReminderMessages.EveningNudge(
-                f.Name, ReminderSchedule.StudentLocalTime(f.LessonDate), f.MeetLink)),
-            _ => ("monday", ReminderMessages.MondaySummary(f.Name, f.Week ?? [])),
+                f.Name, ReminderSchedule.StudentLocalTime(f.LessonDate), f.MeetLink), NotifyUrgency.High),
+            _ => ("monday", ReminderMessages.MondaySummary(f.Name, f.Week ?? []), NotifyUrgency.Normal),
         };
 
         try
         {
-            var sid = await twilio.SendAsync(f.Phone, body, ct);
+            var result = await notifier.SendAsync(
+                f.StudentId, ReminderTitles.For(template), body, urgency, ct);
             db.ReminderLogs.Add(new ReminderLog
             {
-                To = f.Phone, Date = f.LessonDate,
-                Template = template, Result = "sent", TwilioSid = sid,
+                UserId = f.StudentId, To = f.Email, Date = f.LessonDate,
+                Template = template, Result = "sent",
+                Channel = result.Channel, ProviderRef = result.ProviderRef,
             });
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "WhatsApp {Template} to {To} failed.", template, f.Phone);
+            log.LogWarning(ex, "Notification {Template} to {UserId} failed.", template, f.StudentId);
             db.ReminderLogs.Add(new ReminderLog
             {
-                To = f.Phone, Date = f.LessonDate,
+                UserId = f.StudentId, To = f.Email, Date = f.LessonDate,
                 Template = template, Result = "failed",
             });
         }

@@ -267,7 +267,7 @@ onMounted(() => {
       <template #header>
         <h2 class="font-semibold text-highlighted">People</h2>
         <p class="text-muted text-sm">
-          These names show on the shared calendar, in WhatsApp reminders and on the Meet invites.
+          These names show on the shared calendar, in lesson reminders and on the Meet invites.
         </p>
       </template>
 
@@ -308,7 +308,7 @@ onMounted(() => {
             v-model="drafts[p.id]!.phone"
             type="tel"
             placeholder="+447700900123"
-            aria-label="WhatsApp number"
+            aria-label="Phone number (optional, not used for reminders)"
             class="min-w-0"
           />
           <UButton

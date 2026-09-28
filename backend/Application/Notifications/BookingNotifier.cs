@@ -7,11 +7,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Application.Notifications;
 
-/// Sends booking confirmations over WhatsApp. NEVER throws — failures are
-/// logged to ReminderLog so a broken number can never break a booking.
+/// <summary>Sends booking confirmations. NEVER throws — failures are
+/// logged to ReminderLog so a broken notification can never break a booking.</summary>
 public sealed class BookingNotifier(
     IAppDbContext db,
-    ITwilioSender twilio,
+    INotifier notifier,
     ILogger<BookingNotifier> log) : IBookingNotifier
 {
     public async Task NotifyBookingChangedAsync(Guid bookingId, BookingChangeKind kind, CancellationToken ct)
@@ -24,7 +24,6 @@ public sealed class BookingNotifier(
                 .Join(db.Users, x => x.b.StudentId, u => u.Id, (x, u) => new { x.b, x.s, u })
                 .FirstOrDefaultAsync(ct);
             if (row is null) return;
-            if (string.IsNullOrEmpty(row.u.PhoneE164)) return;
 
             var london = ReminderSchedule.StudentLocalTime(row.s.Date);
             var link = row.s.MeetLink ?? "";
@@ -39,17 +38,18 @@ public sealed class BookingNotifier(
                     ReminderMessages.Confirmation(row.u.Name, row.s.Date, london, link)),
             };
 
-            string sid;
+            NotifyResult result;
             try
             {
-                sid = await twilio.SendAsync(row.u.PhoneE164, body, ct);
+                result = await notifier.SendAsync(
+                    row.u.Id, ReminderTitles.For(template), body, NotifyUrgency.High, ct);
             }
             catch (Exception ex)
             {
-                log.LogWarning(ex, "WhatsApp {Template} to {To} failed.", template, row.u.PhoneE164);
+                log.LogWarning(ex, "Notification {Template} to {UserId} failed.", template, row.u.Id);
                 db.ReminderLogs.Add(new ReminderLog
                 {
-                    To = row.u.PhoneE164, Date = row.s.Date,
+                    UserId = row.u.Id, To = row.u.Email, Date = row.s.Date,
                     Template = template, Result = "failed",
                 });
                 await db.SaveChangesAsync(ct);
@@ -57,8 +57,9 @@ public sealed class BookingNotifier(
             }
             db.ReminderLogs.Add(new ReminderLog
             {
-                To = row.u.PhoneE164, Date = row.s.Date,
-                Template = template, Result = "sent", TwilioSid = sid,
+                UserId = row.u.Id, To = row.u.Email, Date = row.s.Date,
+                Template = template, Result = "sent",
+                Channel = result.Channel, ProviderRef = result.ProviderRef,
             });
             await db.SaveChangesAsync(ct);
         }

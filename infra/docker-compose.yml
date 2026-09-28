@@ -25,9 +25,9 @@ services:
       - Google__RedirectUri=${GOOGLE_REDIRECT_URI}
       - Google__LoginRedirectUri=${GOOGLE_LOGIN_REDIRECT_URI}
       - Google__TokenKey=${GOOGLE_TOKEN_KEY}
-      - Twilio__AccountSid=${TWILIO_ACCOUNT_SID}
-      - Twilio__AuthToken=${TWILIO_AUTH_TOKEN}
-      - Twilio__FromNumber=${TWILIO_FROM_NUMBER}
+      - Push__VapidPublicKey=${PUSH_VAPID_PUBLIC_KEY}
+      - Push__VapidPrivateKey=${PUSH_VAPID_PRIVATE_KEY}
+      - Push__VapidSubject=${PUSH_VAPID_SUBJECT}
       - Reminder__Monday=${REMINDER_MONDAY:-true}
       - Reminder__Morning=${REMINDER_MORNING:-true}
       - Reminder__Evening=${REMINDER_EVENING:-true}

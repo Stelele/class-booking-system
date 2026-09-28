@@ -10,6 +10,11 @@ export default defineConfig({
     ui(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Custom service worker: the generateSW strategy cannot host the
+      // push / notificationclick handlers that iOS requires.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.ico', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
       manifest: {
         name: 'Lesson Booking',
@@ -18,41 +23,17 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
+        // Stable identity so iOS does not treat a redeploy as a new app.
+        id: '/',
         start_url: '/calendar',
         icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: 'pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        // SPA: unknown navigations get the app shell
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        runtimeCaching: [
-          {
-            // read-through cache: shared calendar data stays visible offline,
-            // fresh data wins whenever the network is up
-            urlPattern: ({ url, request }) =>
-              request.method === 'GET'
-              && (url.pathname === '/api/slots'
-                || /^\/api\/slots\/[^/]+\/ics$/.test(url.pathname)),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 4,
-              expiration: { maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 * 7 },
-              cacheableResponse: { statuses: [200] },
-            },
-          },
-          {
-            // never cache mutations — bookings must hit the server
-            urlPattern: ({ url, request }) =>
-              url.pathname.startsWith('/api/') && request.method !== 'GET',
-            handler: 'NetworkOnly',
-          },
-        ],
       },
       devOptions: { enabled: false }, // dev + E2E stay SW-free
     }),

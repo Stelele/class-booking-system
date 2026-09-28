@@ -49,6 +49,7 @@ app.MapGoogleAuth();
 app.MapSlots();
 app.MapIcs();
 app.MapBookings();
+app.MapPush();
 app.MapAdmin();
 
 if (app.Environment.EnvironmentName == "E2E")

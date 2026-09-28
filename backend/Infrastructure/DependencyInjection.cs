@@ -6,8 +6,9 @@ using System.Net.Http.Headers;
 using Infrastructure.Backups;
 using Infrastructure.Identity;
 using Infrastructure.Meet;
+using Infrastructure.Notifications;
 using Infrastructure.Persistence;
-using Infrastructure.WhatsApp;
+using Lib.Net.Http.WebPush.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -110,15 +111,27 @@ public static class DependencyInjection
         {
             services.AddSingleton<IBackupService, NullBackupService>();
         }
-        services.Configure<TwilioOptions>(config.GetSection("Twilio"));
-        services.AddHttpClient("Twilio", c => c.BaseAddress = new Uri("https://api.twilio.com/"));
-        services.AddScoped<ITwilioSender>(sp =>
-            string.IsNullOrEmpty(config["Twilio:AccountSid"])
-                ? new NullTwilioSender(sp.GetRequiredService<ILogger<NullTwilioSender>>())
-                : new TwilioWhatsAppSender(
-                    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Twilio"),
-                    sp.GetRequiredService<IOptions<TwilioOptions>>(),
-                    sp.GetRequiredService<ILogger<TwilioWhatsAppSender>>()));
+        // Notifications: web push first, Resend email as fallback. Each
+        // collaborator reports Enabled, so push-only, email-only and
+        // unconfigured (log-only) deployments all share one notifier.
+        services.Configure<PushOptions>(config.GetSection("Push"));
+        // Singleton so the signed VAPID token is reused across requests
+        // instead of being re-signed for every reminder.
+        services.AddSingleton<IVapidTokenCache, MemoryVapidTokenCache>();
+        services.AddHttpClient("Push");
+        // Scoped: WebPushSender reads PushSubscriptions via the request's
+        // DbContext, so it must not be a singleton.
+        services.AddScoped(sp => new WebPushSender(
+            sp.GetRequiredService<IAppDbContext>(),
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<IOptions<PushOptions>>(),
+            sp.GetRequiredService<IVapidTokenCache>(),
+            sp.GetRequiredService<ILogger<WebPushSender>>()));
+        services.AddSingleton(sp => new EmailNotifier(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<IOptions<EmailHttpOptions>>(),
+            sp.GetRequiredService<ILogger<EmailNotifier>>()));
+        services.AddScoped<INotifier, PushOrEmailNotifier>();
         services.AddHostedService<ReminderService>();
         // E2E hook: capture login codes in-process so tests can read them via /api/test/latest-code
         if (config["E2E"] == "true")
