@@ -1,3 +1,4 @@
+using Tests;
 using System.Net;
 using Application.Abstractions;
 using Domain.Reminders;
@@ -80,8 +81,8 @@ public class PushNotifierTests
             {
                 UserId = user.Id,
                 Endpoint = $"https://fcm.googleapis.com/fcm/send/abc{i}",
-                P256Dh = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
-                Auth = "8eDyX_uCN0XRhSbY5hs7Hg",
+                P256Dh = PushTestKeys.P256Dh(),
+                Auth = PushTestKeys.Auth(),
                 IsIos = isIos,
             });
         }

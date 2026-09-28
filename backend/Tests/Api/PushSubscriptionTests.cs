@@ -34,8 +34,8 @@ public class PushSubscriptionTests(ApiFactory factory) : IAsyncLifetime
     private static object Req(string endpoint, bool isIos = false) => new
     {
         endpoint,
-        p256dh = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
-        auth = "8eDyX_uCN0XRhSbY5hs7Hg",
+        p256dh = PushTestKeys.P256Dh(),
+        auth = PushTestKeys.Auth(),
         isIos,
     };
 
@@ -157,8 +157,8 @@ public class PushSubscriptionTests(ApiFactory factory) : IAsyncLifetime
         await client.PostAsJsonAsync("/api/notifications/push-subscription", new
         {
             endpoint = "https://fcm.googleapis.com/fcm/send/no-flag",
-            p256dh = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
-            auth = "8eDyX_uCN0XRhSbY5hs7Hg",
+            p256dh = PushTestKeys.P256Dh(),
+            auth = PushTestKeys.Auth(),
         });
 
         using var scope = factory.Services.CreateScope();
