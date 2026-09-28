@@ -23,12 +23,41 @@ export function isChunkLoadError(error: unknown): boolean {
   return CHUNK_LOAD_PATTERNS.some(pattern => pattern.test(message))
 }
 
+// sessionStorage is the guard that survives the reload, so it is the one that
+// stops a reload loop. It is not always available — Safari private browsing
+// and blocked third-party storage both throw on access — and recovery must
+// never be the thing that fails there, so fall back to a per-document flag.
+// That is a weaker guard: without storage a permanently missing chunk would
+// reload once per document. Acceptable, because it needs blocked storage AND
+// a broken build at the same time, whereas the fallback it rescues is a
+// blocked-storage user hitting an ordinary deploy.
+let reloadedThisDocument = false
+
+function alreadyReloaded(): boolean {
+  if (reloadedThisDocument) return true
+  try {
+    return sessionStorage.getItem(GUARD_KEY) !== null
+  }
+  catch {
+    return false
+  }
+}
+
+function rememberReload(): void {
+  reloadedThisDocument = true
+  try {
+    sessionStorage.setItem(GUARD_KEY, '1')
+  }
+  catch {
+    // reloadedThisDocument still holds for the life of this document
+  }
+}
+
 /** Reload at most once per tab session. Returns true if a reload was issued. */
 export function attemptRecovery(): boolean {
-  if (sessionStorage.getItem(GUARD_KEY))
-    return false
+  if (alreadyReloaded()) return false
 
-  sessionStorage.setItem(GUARD_KEY, '1')
+  rememberReload()
   console.warn('[chunkRecovery] stale build detected — reloading to pick up the current build')
   window.location.reload()
   return true
