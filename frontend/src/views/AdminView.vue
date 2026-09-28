@@ -25,6 +25,7 @@ const route = useRoute()
 const router = useRouter()
 const googleConnected = ref(false)
 const googleNeedsReconnect = ref(false)
+const googleEventsEnabled = ref(true)
 const googleLoading = ref(true)
 const googleNotice = ref('')
 const googleNoticeError = ref(false)
@@ -104,10 +105,20 @@ async function disconnectGoogle() {
 
 async function loadGoogleStatus() {
   try {
-    const res = await api<{ connected: boolean; needsReconnect: boolean }>('/admin/google/status')
+    const res = await api<{
+      connected: boolean
+      needsReconnect: boolean
+      meetProvider: string
+      eventsEnabled: boolean
+    }>('/admin/google/status')
     googleConnected.value = res.connected
     googleNeedsReconnect.value = res.needsReconnect
-  } catch { googleConnected.value = false; googleNeedsReconnect.value = false }
+    googleEventsEnabled.value = res.eventsEnabled
+  } catch {
+    googleConnected.value = false
+    googleNeedsReconnect.value = false
+    googleEventsEnabled.value = true
+  }
   finally { googleLoading.value = false }
 }
 
@@ -225,10 +236,20 @@ onMounted(() => {
         </div>
       </template>
 
+      <UAlert
+        v-if="!googleEventsEnabled"
+        color="warning" variant="subtle" icon="i-lucide-triangle-alert"
+        class="mb-3"
+        title="Calendar events are not being created"
+        description="Google is connected, but the server is running with the fixed Meet link, so bookings use the fallback link and no calendar event is made. Set MEET_PROVIDER=google and redeploy."
+      />
+
       <p class="text-muted">
-        {{ googleNeedsReconnect
-          ? 'Reconnect for new Meet links, or disconnect to remove local Google access.'
-          : 'Create and remove lesson events with Meet links on your primary calendar.' }}
+        {{ googleEventsEnabled
+          ? (googleNeedsReconnect
+            ? 'Reconnect for new Meet links, or disconnect to remove local Google access.'
+            : 'Create and remove lesson events with Meet links on your primary calendar.')
+          : 'Bookings currently use the fixed Meet link below. Connect is not the problem — the server just is not in Google mode.' }}
       </p>
       <p class="mt-3 text-sm text-muted"><strong>Required permission:</strong> calendar.events.owned</p>
 

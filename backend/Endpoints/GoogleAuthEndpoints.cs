@@ -1,5 +1,6 @@
 using Application.Abstractions;
 using Application.Auth;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Endpoints;
@@ -34,8 +35,23 @@ public static class GoogleAuthEndpoints
             }
         }).RequireAuthorization(p => p.RequireRole("Admin"));
 
-        app.MapGet("/api/admin/google/status", async (ISender sender) =>
-            Results.Ok(await sender.Send(new GetGoogleStatusQuery())))
+        // Includes the active Meet provider: "connected" is a true statement
+        // about the account but says nothing about whether bookings create
+        // calendar events, which is gated on App:Meet:Provider. Returning both
+        // makes a mismatch visible instead of silently producing fixed links.
+        app.MapGet("/api/admin/google/status", async (ISender sender, IConfiguration config) =>
+        {
+            var status = await sender.Send(new GetGoogleStatusQuery());
+            var provider = (config["App:Meet:Provider"] ?? "fixed").ToLowerInvariant();
+            return Results.Ok(new
+            {
+                status.Connected,
+                status.NeedsReconnect,
+                MeetProvider = provider,
+                // false when Google is connected but events will not be created.
+                EventsEnabled = provider == "google",
+            });
+        })
            .RequireAuthorization(p => p.RequireRole("Admin"));
 
         app.MapDelete("/api/admin/google", async (ISender sender, CancellationToken ct) =>
