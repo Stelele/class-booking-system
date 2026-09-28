@@ -150,27 +150,34 @@ return await Deployment.RunAsync(() =>
         # Each deploy replaces the whole dist, so every content-hashed chunk
         # name changes. A tab still running the previous build asks for exactly
         # the names we are about to delete, and its lazy route import then dies.
-        # Stash the running build's chunks first and re-inject them after the
+        # Stash the previous build's chunks first and re-inject them after the
         # swap, so an in-flight tab finishes its navigation instead of 404ing.
         # Keyed by image id: a rebuild that produced identical output must not
         # evict assets the running build is still serving.
         mkdir -p "$STASH"
         if running=$(docker compose ps -q "$SVC" 2>/dev/null) && [ -n "$running" ]; then
-          # ':' would make the stash path ambiguous to `docker cp` (src:dst)
-          image=$(docker inspect -f '{{.Image}}' "$running" | tr -c 'A-Za-z0-9' '-')
-          if [ -n "$image" ]; then
+          # ':' would make the stash path ambiguous to `docker cp` (src:dst).
+          # Drop newlines first — tr -c would otherwise turn one into a '-'.
+          image=$(docker inspect -f '{{.Image}}' "$running" | tr -d '\n' | tr -c 'A-Za-z0-9' '-')
+          # Snapshot the image, never the running container. The last deploy
+          # re-injected retained chunks into that container's assets dir, so
+          # copying from it would carry those forward forever and resurrect
+          # assets a build had deleted. A container created from the image is
+          # never started and never augmented.
+          if [ -n "$image" ] && scratch=$(docker create "$image" 2>/dev/null) && [ -n "$scratch" ]; then
             rm -rf "$STASH/$image"
             mkdir -p "$STASH/$image"
-            docker cp "$running:/usr/share/nginx/html/assets/." "$STASH/$image/" || true
+            docker cp "$scratch:/usr/share/nginx/html/assets/." "$STASH/$image/" || true
+            docker rm -f "$scratch" >/dev/null 2>&1 || true
           fi
         fi
 
         docker compose up -d
 
-        # Serve the retained builds next to the new one. A file that a later
-        # build deleted stays reachable, so the served set converges to the
-        # union of the retained generations rather than shrinking — a few KB
-        # per renamed chunk, in exchange for no in-flight tab ever 404ing.
+        # Serve the retained builds next to the new one, so an in-flight tab
+        # still finds the chunks it asked for. Each stash is one pristine build,
+        # so the served set is exactly the last KEEP builds: once a build ages
+        # out of retention its assets disappear, and deletions take effect.
         # Best-effort: a failed injection costs one reload for that tab, and
         # must never fail the deploy itself.
         if [ -d "$STASH" ]; then
