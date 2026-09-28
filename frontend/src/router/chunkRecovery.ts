@@ -33,6 +33,7 @@ export function isChunkLoadError(error: unknown): boolean {
 // blocked-storage user hitting an ordinary deploy.
 let reloadedThisDocument = false
 
+/** Has this tab already been recovered? Persisted guard first, then this document. */
 function alreadyReloaded(): boolean {
   if (reloadedThisDocument) return true
   try {
@@ -43,6 +44,7 @@ function alreadyReloaded(): boolean {
   }
 }
 
+/** Arm both guards. Persistence is best-effort; the in-memory flag is not. */
 function rememberReload(): void {
   reloadedThisDocument = true
   try {
