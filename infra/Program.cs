@@ -174,21 +174,31 @@ return await Deployment.RunAsync(() =>
 
         docker compose up -d
 
+        # Recreate the frontend specifically, every deploy. Retained chunks are
+        # cp'd into its writable layer, so a plain `up -d` reuses the existing
+        # container whenever the image id is unchanged — a manual redeploy, or
+        # any `pulumi up` re-running the runStamp trigger — and the injected
+        # files then outlive the retention window. Only the frontend is forced:
+        # it is the only service anything is cp'd into, and forcing the backend
+        # would restart it on deploys that never touched backend code.
+        docker compose up -d --force-recreate "$SVC"
+
         # Serve the retained builds next to the new one, so an in-flight tab
         # still finds the chunks it asked for. Each stash is one pristine build,
         # so the served set is exactly the last KEEP builds: once a build ages
         # out of retention its assets disappear, and deletions take effect.
+        # Pruned BEFORE injecting, or the generation being dropped would still
+        # be copied into the container and outlive its own stash entry.
         # Best-effort: a failed injection costs one reload for that tab, and
         # must never fail the deploy itself.
         if [ -d "$STASH" ]; then
+          ls -1dt "$STASH"/*/ 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -rf || true
           if fresh=$(docker compose ps -q "$SVC" 2>/dev/null) && [ -n "$fresh" ]; then
             for dir in "$STASH"/*/; do
               [ -d "$dir" ] || continue
               docker cp "$dir." "$fresh:/usr/share/nginx/html/assets/" || true
             done
           fi
-          # bound the stash: retention is only needed across one or two deploys
-          ls -1dt "$STASH"/*/ 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -rf || true
         fi
         """;
 
