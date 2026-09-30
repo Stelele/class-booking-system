@@ -12,9 +12,7 @@
 //   write-ssh-key : decode DO_SSH_KEY (base64) → /tmp/do_key on the runner
 //   write-env     : build /opt/class-booking/.env locally, scp it (0600);
 //                   secrets never enter a command string, a log, or state
-//   deploy        : scp docker-compose.yml → `docker compose pull && up -d`,
-//                   retaining the running build's hashed chunks across the swap
-//                   so an in-flight tab's lazy route imports still resolve
+//   deploy        : scp docker-compose.yml → `docker compose pull && up -d`
 //   nginx-vhost   : vhost proxying {domain} → 127.0.0.1:8081, nginx reload
 //
 // write-ssh-key and deploy carry a per-run trigger (runStamp): the CI runner is
@@ -138,75 +136,11 @@ return await Deployment.RunAsync(() =>
 
     // ── resource 3: deploy ──────────────────────────────────────────────────
     var composePath = Path.GetFullPath("docker-compose.yml"); // CWD = infra/
-    var deployScript = """
-        set -euo pipefail
-        cd /opt/class-booking
-        SVC=frontend
-        STASH=/opt/class-booking/retained-assets
-        KEEP=3
-
-        docker compose pull
-
-        # Each deploy replaces the whole dist, so every content-hashed chunk
-        # name changes. A tab still running the previous build asks for exactly
-        # the names we are about to delete, and its lazy route import then dies.
-        # Stash the previous build's chunks first and re-inject them after the
-        # swap, so an in-flight tab finishes its navigation instead of 404ing.
-        # Keyed by image id: a rebuild that produced identical output must not
-        # evict assets the running build is still serving.
-        mkdir -p "$STASH"
-        if running=$(docker compose ps -q "$SVC" 2>/dev/null) && [ -n "$running" ]; then
-          # ':' would make the stash path ambiguous to `docker cp` (src:dst).
-          # Drop newlines first — tr -c would otherwise turn one into a '-'.
-          image=$(docker inspect -f '{{.Image}}' "$running" | tr -d '\n' | tr -c 'A-Za-z0-9' '-')
-          # Snapshot the image, never the running container. The last deploy
-          # re-injected retained chunks into that container's assets dir, so
-          # copying from it would carry those forward forever and resurrect
-          # assets a build had deleted. A container created from the image is
-          # never started and never augmented.
-          if [ -n "$image" ] && scratch=$(docker create "$image" 2>/dev/null) && [ -n "$scratch" ]; then
-            rm -rf "$STASH/$image"
-            mkdir -p "$STASH/$image"
-            docker cp "$scratch:/usr/share/nginx/html/assets/." "$STASH/$image/" || true
-            docker rm -f "$scratch" >/dev/null 2>&1 || true
-          fi
-        fi
-
-        docker compose up -d
-
-        # Recreate the frontend specifically, every deploy. Retained chunks are
-        # cp'd into its writable layer, so a plain `up -d` reuses the existing
-        # container whenever the image id is unchanged — a manual redeploy, or
-        # any `pulumi up` re-running the runStamp trigger — and the injected
-        # files then outlive the retention window. Only the frontend is forced:
-        # it is the only service anything is cp'd into, and forcing the backend
-        # would restart it on deploys that never touched backend code.
-        docker compose up -d --force-recreate "$SVC"
-
-        # Serve the retained builds next to the new one, so an in-flight tab
-        # still finds the chunks it asked for. Each stash is one pristine build,
-        # so the served set is exactly the last KEEP builds: once a build ages
-        # out of retention its assets disappear, and deletions take effect.
-        # Pruned BEFORE injecting, or the generation being dropped would still
-        # be copied into the container and outlive its own stash entry.
-        # Best-effort: a failed injection costs one reload for that tab, and
-        # must never fail the deploy itself.
-        if [ -d "$STASH" ]; then
-          ls -1dt "$STASH"/*/ 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -rf || true
-          if fresh=$(docker compose ps -q "$SVC" 2>/dev/null) && [ -n "$fresh" ]; then
-            for dir in "$STASH"/*/; do
-              [ -d "$dir" ] || continue
-              docker cp "$dir." "$fresh:/usr/share/nginx/html/assets/" || true
-            done
-          fi
-        fi
-        """;
-
     var deploy = new LocalCommand("deploy", new LocalCommandArgs
     {
         Create = string.Join(" && ",
             Scp(composePath, "/opt/class-booking/docker-compose.yml"),
-            $"{Ssh("bash -s")} <<'DEPLOY_EOF'\n{deployScript}\nDEPLOY_EOF"),
+            Ssh("cd /opt/class-booking && docker compose pull && docker compose up -d")),
         Interpreter = { "/bin/bash", "-c" },
         Triggers = { { "runStamp", runStamp } }, // re-pull :latest on every up
     }, new CustomResourceOptions { DependsOn = { writeEnv } });
