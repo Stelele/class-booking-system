@@ -86,6 +86,7 @@ describe('attemptRecovery when sessionStorage throws', () => {
 
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
+    window.name = ''
   })
 
   afterEach(() => {
@@ -110,6 +111,25 @@ describe('attemptRecovery when sessionStorage throws', () => {
 
     expect(attemptRecovery()).toBe(true)
     expect(attemptRecovery()).toBe(false)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  // Without a guard that outlives the document, a chunk that is still missing
+  // after the reload would reload forever: each new document starts with a
+  // clean in-memory flag and no storage to consult.
+  it('does not reload again after a reload, so a still-missing chunk cannot loop', async () => {
+    const reload = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload })
+    breakStorage()
+
+    const first = await loadRecovery()
+    expect(first.attemptRecovery()).toBe(true)
+    expect(reload).toHaveBeenCalledTimes(1)
+
+    // the reload tore down the document: fresh module, fresh in-memory flag,
+    // and storage still unavailable
+    const second = await loadRecovery()
+    expect(second.attemptRecovery()).toBe(false)
     expect(reload).toHaveBeenCalledTimes(1)
   })
 })

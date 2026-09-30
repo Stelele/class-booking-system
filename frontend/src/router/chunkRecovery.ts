@@ -26,11 +26,14 @@ export function isChunkLoadError(error: unknown): boolean {
 // sessionStorage is the guard that survives the reload, so it is the one that
 // stops a reload loop. It is not always available — Safari private browsing
 // and blocked third-party storage both throw on access — and recovery must
-// never be the thing that fails there, so fall back to a per-document flag.
-// That is a weaker guard: without storage a permanently missing chunk would
-// reload once per document. Acceptable, because it needs blocked storage AND
-// a broken build at the same time, whereas the fallback it rescues is a
-// blocked-storage user hitting an ordinary deploy.
+// never be the thing that fails there.
+//
+// window.name is the fallback: it needs no storage API and it survives a reload
+// in the same tab (verified in Chrome rather than assumed). Without something
+// that outlives the document, a chunk still missing after the reload reloads
+// forever — every new document starts with a clean in-memory flag and no
+// storage to consult. Skipping recovery when storage fails, the other way out,
+// would just hand back the opposite failure: no recovery at all.
 let reloadedThisDocument = false
 
 /** Has this tab already been recovered? Persisted guard first, then this document. */
@@ -40,7 +43,7 @@ function alreadyReloaded(): boolean {
     return sessionStorage.getItem(GUARD_KEY) !== null
   }
   catch {
-    return false
+    return window.name === GUARD_KEY
   }
 }
 
@@ -51,7 +54,13 @@ function rememberReload(): void {
     sessionStorage.setItem(GUARD_KEY, '1')
   }
   catch {
-    // reloadedThisDocument still holds for the life of this document
+    try {
+      window.name = GUARD_KEY
+    }
+    catch {
+      // nothing durable left to guard with, so the worst case is one reload
+      // per document rather than one per call
+    }
   }
 }
 
