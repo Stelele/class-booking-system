@@ -6,17 +6,24 @@ declare module 'vue-router' {
   interface RouteMeta { auth?: boolean; admin?: boolean }
 }
 
+export const routes = [
+  { path: '/', component: () => import('../views/HomeView.vue') },
+  { path: '/login', component: () => import('../views/LoginView.vue') },
+  { path: '/calendar', component: () => import('../views/CalendarView.vue'), meta: { auth: true } },
+  { path: '/mine', component: () => import('../views/MyLessonsView.vue'), meta: { auth: true } },
+  { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { auth: true, admin: true } },
+  { path: '/privacy', component: () => import('../views/PrivacyView.vue') },
+  { path: '/terms', component: () => import('../views/TermsView.vue') },
+  // Last, so it cannot shadow a real route. Without it an unmatched path
+  // renders the layout around an empty <main> with no explanation — and the
+  // PWA's start_url (/calendar) would open blank forever if that route were
+  // ever renamed, with no way back but reinstalling.
+  { path: '/:pathMatch(.*)*', redirect: '/' },
+]
+
 const router = createRouter({
   history: createWebHistory(),
-  routes: [
-    { path: '/', component: () => import('../views/HomeView.vue') },
-    { path: '/login', component: () => import('../views/LoginView.vue') },
-    { path: '/calendar', component: () => import('../views/CalendarView.vue'), meta: { auth: true } },
-    { path: '/mine', component: () => import('../views/MyLessonsView.vue'), meta: { auth: true } },
-    { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { auth: true, admin: true } },
-    { path: '/privacy', component: () => import('../views/PrivacyView.vue') },
-    { path: '/terms', component: () => import('../views/TermsView.vue') },
-  ],
+  routes,
 })
 
 router.beforeEach((to) => {
