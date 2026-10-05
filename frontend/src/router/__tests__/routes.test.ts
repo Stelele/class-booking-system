@@ -30,10 +30,18 @@ describe('the catch-all does not shadow real routes', () => {
     '/login',
     '/calendar',
     '/mine',
+    '/lessons',
     '/admin',
     '/privacy',
     '/terms',
   ])('keeps %s resolving to itself', (path) => {
     expect(router.resolve(path).path).toBe(path)
+  })
+
+  // resolve().path echoes the requested path back even when the catch-all is
+  // what actually matched, so the assertion above passes for a route that was
+  // never registered. The matched record is what tells the two apart.
+  it.each(['/calendar', '/mine', '/lessons', '/admin'])('%s is a real route, not the catch-all', (path) => {
+    expect(router.resolve(path).matched.map(r => r.path)).toEqual([path])
   })
 })

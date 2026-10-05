@@ -11,6 +11,9 @@ export const routes = [
   { path: '/login', component: () => import('../views/LoginView.vue') },
   { path: '/calendar', component: () => import('../views/CalendarView.vue'), meta: { auth: true } },
   { path: '/mine', component: () => import('../views/MyLessonsView.vue'), meta: { auth: true } },
+  // Teacher only: the teacher has no bookings of their own, so this is the only
+  // page that shows them a booked day and lets them join it.
+  { path: '/lessons', component: () => import('../views/LessonsView.vue'), meta: { auth: true, admin: true } },
   { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { auth: true, admin: true } },
   { path: '/privacy', component: () => import('../views/PrivacyView.vue') },
   { path: '/terms', component: () => import('../views/TermsView.vue') },

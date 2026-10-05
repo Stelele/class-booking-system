@@ -21,8 +21,23 @@ public sealed class CancelBookingCommandHandler(IAppDbContext db, ICurrentUser u
         booking.Status = BookingStatus.Cancelled;
         booking.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
         if (googleEventId is not null)
+        {
+            // nobody left — remove the event outright
             await sync.DeleteEventAsync(googleEventId, ct);
+        }
+        else
+        {
+            // Someone else still holds this day, so the event survives. Rebuild
+            // the guest list without the student who just left; otherwise they
+            // keep an invitation to a lesson they cancelled.
+            await sync.UpdateAttendeesAsync(
+                booking.Slot.GoogleEventId,
+                await BookingSlotLifecycle.ActiveStudentEmailsAsync(db, booking.Slot, ct),
+                ct);
+        }
+
         await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Cancelled, ct);
         return true;
     }

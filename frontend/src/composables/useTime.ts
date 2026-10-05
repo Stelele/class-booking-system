@@ -22,6 +22,16 @@ export function formatDayLocal(utcIso: string, timeZone?: string): string {
   }).format(new Date(utcIso))
 }
 
+/**
+ * The current date in a given zone, as yyyy-MM-dd. Must not be derived from
+ * toISOString(): that is the UTC date, so between midnight and the zone's
+ * offset it names the wrong day. Harare is UTC+2, where that window is 00:00-02:00.
+ */
+export function todayInZone(timeZone: string): string {
+  // en-CA formats as yyyy-MM-dd, which is what SlotDay.date uses
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date())
+}
+
 /** "19:30 your time · 20:30 Harare" — viewer zone automatic via Intl. */
 export function dualTimeLabel(utcIso: string): string {
   return `${formatLocal(utcIso)} your time · ${formatLocal(utcIso, 'Africa/Harare')} Harare`

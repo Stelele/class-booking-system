@@ -12,7 +12,11 @@ const navItems = computed<NavigationMenuItem[]>(() => {
     { label: 'My Lessons', to: '/mine', active: route.path === '/mine' },
   ]
   if (user.value?.role === 'Admin')
-    items.push({ label: 'Admin', to: '/admin', active: route.path === '/admin' })
+    items.push(
+      // joining a lesson is far more frequent than changing settings
+      { label: 'Lessons', to: '/lessons', active: route.path === '/lessons' },
+      { label: 'Admin', to: '/admin', active: route.path === '/admin' },
+    )
   return items
 })
 
