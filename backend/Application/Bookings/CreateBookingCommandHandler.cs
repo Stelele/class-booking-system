@@ -6,7 +6,7 @@ using BookingEntity = Domain.Slots.Booking;
 
 namespace Application.Bookings;
 
-public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet, IBookingNotifier notifier)
+public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser user, IMeetLinkProvider meet, IMeetEventSync sync, IBookingNotifier notifier)
     : ICommandHandler<CreateBookingCommand, BookingDto>
 {
     public async Task<BookingDto> Handle(CreateBookingCommand c, CancellationToken ct)
@@ -20,6 +20,12 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
             b.Slot.Date == c.Date, ct);
         if (existingActive) throw new BookingException("You already have a booking on that day.");
 
+        var studentEmail = await db.Users.AsNoTracking()
+            .Where(u => u.Id == user.UserId)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new BookingException("Your account has no email address.");
+
         var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.Date, ct);
         if (slot is null)
         {
@@ -27,12 +33,22 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
             db.Slots.Add(slot);
         }
 
+        // Tracks whether the event above was created for the slot this booking
+        // ends up on. If it already existed, this student joined an existing
+        // event and must be added to its guest list separately — the insert
+        // would not have run for them.
+        var insertedEventForSlotId = (Guid?)null;
         if (slot.MeetLink is null
             || !await BookingSlotLifecycle.HasActiveBookingsAsync(db, slot, ct))
         {
-            var link = await meet.GetOrCreateLinkAsync(c.Date, ct);
+            // The event is created with this student as its only guest. Their
+            // email is looked up here rather than on ICurrentUser because the
+            // guest list needs the address, and the claims identity carries only
+            // the id and name.
+            var link = await meet.GetOrCreateLinkAsync(c.Date, [studentEmail], ct);
             slot.MeetLink = link.MeetLink;
             slot.GoogleEventId = link.GoogleEventId;
+            insertedEventForSlotId = slot.Id;
         }
 
         var booking = new BookingEntity { SlotId = slot.Id, StudentId = user.UserId };
@@ -56,6 +72,21 @@ public sealed class CreateBookingCommandHandler(IAppDbContext db, ICurrentUser u
             db.Bookings.Add(booking);
             await db.SaveChangesAsync(ct);
             slot = winner;
+        }
+
+        // A combined lesson reuses the existing event, so the insert above never
+        // ran for this student. Patch the guest list after the save so the query
+        // sees the new booking. Skipped when the insert ran for the slot we ended
+        // up on — that event already lists this student, as its only guest.
+        // Losing the concurrent-booking retry counts as "not inserted", since
+        // the winning slot's event belongs to the other student. No-op in fixed
+        // mode (no event id).
+        if (insertedEventForSlotId != slot.Id)
+        {
+            await sync.UpdateAttendeesAsync(
+                slot.GoogleEventId,
+                await BookingSlotLifecycle.ActiveStudentEmailsAsync(db, slot, ct),
+                ct);
         }
 
         await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Created, ct);

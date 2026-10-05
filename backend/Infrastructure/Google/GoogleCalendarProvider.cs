@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Application.Abstractions;
 using Domain.Slots;
 using Infrastructure.Meet;
@@ -23,13 +25,21 @@ public sealed class GoogleCalendarProvider(
     ILogger<GoogleCalendarProvider> log,
     FixedLinkMeetProvider fallback) : IMeetLinkProvider, IMeetEventSync
 {
-    public async Task<MeetLinkResult> GetOrCreateLinkAsync(DateOnly date, CancellationToken ct = default)
+    // Without this, a null guests list serialises as an explicit "attendees":
+    // null rather than being omitted — see GuestList.
+    private static readonly JsonSerializerOptions BodyOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    public async Task<MeetLinkResult> GetOrCreateLinkAsync(
+        DateOnly date, IReadOnlyList<string> attendeeEmails, CancellationToken ct = default)
     {
         try
         {
             var token = await EnsureFreshTokenAsync(ct);
             if (token is null)
-                return await fallback.GetOrCreateLinkAsync(date, ct);
+                return await fallback.GetOrCreateLinkAsync(date, attendeeEmails, ct);
 
             var http = httpFactory.CreateClient("Google");
 
@@ -54,11 +64,18 @@ public sealed class GoogleCalendarProvider(
                         conferenceSolutionKey = new { type = "hangoutsMeet" },
                     },
                 },
+                // The key is omitted when there is nobody to invite: an empty
+                // attendees array is not the same as no guests, and sendUpdates
+                // only reaches attendees, so an empty list would silently invite
+                // no one — the bug this replaced.
+                // ForInsert, not ForReplace: on a new event an empty list must omit the key
+                // rather than instruct Google to invite nobody.
+                attendees = GuestList.ForInsert(attendeeEmails),
             };
             using var request = new HttpRequestMessage(HttpMethod.Post,
                 "calendars/primary/events?conferenceDataVersion=1&sendUpdates=all")
             {
-                Content = JsonContent.Create(body),
+                Content = JsonContent.Create(body, options: BodyOptions),
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
             using var res = await http.SendAsync(request, ct);
@@ -79,7 +96,55 @@ public sealed class GoogleCalendarProvider(
             if (ex is HttpRequestException hre
                 && hre.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 await tokens.FlagReconnectAsync(ct);
-            return await fallback.GetOrCreateLinkAsync(date, ct);
+            return await fallback.GetOrCreateLinkAsync(date, attendeeEmails, ct);
+        }
+    }
+
+    /// <summary>
+    /// Replaces the guest list on an existing event. Used when a second student
+    /// joins a combined lesson, and when one student cancels a day the other
+    /// still holds — without this they would stay invited to a lesson they are no
+    /// longer part of. Never throws: a stale guest list is a far smaller problem
+    /// than a failed booking.
+    /// </summary>
+    public async Task UpdateAttendeesAsync(
+        string? googleEventId, IReadOnlyList<string> attendeeEmails, CancellationToken ct = default)
+    {
+        // fixed mode stores no event id — nothing to keep in sync
+        if (string.IsNullOrEmpty(googleEventId)) return;
+
+        try
+        {
+            var token = await EnsureFreshTokenAsync(ct);
+            if (token is null) return;
+
+            var http = httpFactory.CreateClient("Google");
+            using var request = new HttpRequestMessage(HttpMethod.Patch,
+                $"calendars/primary/events/{Uri.EscapeDataString(googleEventId)}?sendUpdates=all")
+            {
+                // ForReplace, not ForInsert: this is a full replace, so an empty list must
+                // send attendees: [] to clear the room. Omitting the key here
+                // would leave a cancelled student on the guest list.
+                // Not written with BodyOptions, which would drop an empty array's
+                // key along with the nulls.
+                Content = JsonContent.Create(new { attendees = GuestList.ForReplace(attendeeEmails) }),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+            using var res = await http.SendAsync(request, ct);
+            if (res.IsSuccessStatusCode) return;
+
+            if (res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                await tokens.FlagReconnectAsync(ct);
+                return;
+            }
+            if (res.StatusCode != HttpStatusCode.NotFound)
+                log.LogWarning("Google attendee update returned {Status} for {GoogleEventId}; continuing.",
+                    res.StatusCode, googleEventId);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Google attendee update failed for {GoogleEventId}; continuing.", googleEventId);
         }
     }
 

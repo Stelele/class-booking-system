@@ -92,6 +92,16 @@ async function cancelAllBookings(page: Page) {
   await expect(page.getByText('No upcoming lessons')).toBeVisible()
 }
 
+// goto('/mine') is a full page load, so the bookings fetch has not resolved when
+// cancelAllBookings first counts — it reads 0, stops, and only then does the
+// list appear. Wait for the fetch to land before handing over, or the "all
+// cancelled" assertion fails against a page that was merely still loading.
+async function openMyLessons(page: Page) {
+  await page.goto('/mine')
+  await page.waitForLoadState('networkidle')
+  await expect(page.locator('main')).toContainText(/My lessons/)
+}
+
 test('student logs in, books, sees name on shared calendar', async ({ page }) => {
   await login(page, SEED.studentA.email)
   await gotoNextMonth(page)
@@ -147,6 +157,169 @@ test('cancel and reschedule from my lessons', async ({ page }) => {
   // CANCEL everything studentb holds
   await cancelAllBookings(page)
   await expect(page.getByText('moved from')).toHaveCount(0)
+})
+
+// The teacher has no bookings of their own, so /mine shows them nothing. This is
+// the only page that gives them the join link for a day a student booked —
+// without it the lesson is on the calendar but not reachable.
+test('teacher sees a booked lesson on their lessons page and can join it', async ({ page }) => {
+  const student = await (await page.context().browser()!.newContext()).newPage()
+  let bookedDate: string | null = null
+  try {
+    await login(student, SEED.studentA.email)
+    await gotoNextMonth(student)
+    // 3rd Thursday: the other tests already claimed the 1st and 2nd, and this
+    // database is shared, so a claimed day would already show a booking.
+    bookedDate = nthWeekdayOfNextMonth(4, 3)
+    await student.locator(`[data-date="${bookedDate}"]`).click()
+    await student.getByRole('button', { name: 'Confirm booking' }).click()
+    await expect(student.locator(`[data-date="${bookedDate}"]`)).toContainText(SEED.studentA.name)
+
+    await login(page, SEED.teacher.email)
+    // exact: "My Lessons" also contains "Lessons"
+    await page.getByRole('link', { name: 'Lessons', exact: true }).click()
+    await page.waitForURL('**/lessons')
+
+    const card = page.locator(`[data-lesson-date="${bookedDate}"]`)
+    await expect(card).toBeVisible()
+    await expect(card).toContainText(SEED.studentA.name)
+    await expect(card).toContainText('Harare')
+
+    // The whole point: the teacher's Join link points at the same Meet URL the
+    // student was given, so both sides join one room.
+    const join = card.getByRole('link', { name: 'Join lesson' })
+    await expect(join).toBeVisible()
+    await expect(join).toHaveAttribute('href', /meet\.google\.com|meet\./)
+
+    // /mine must NOT be the answer — it only ever lists the signed-in user's
+    // own bookings, and the teacher booked nothing.
+    await page.getByRole('link', { name: 'My Lessons' }).click()
+    await page.waitForURL('**/mine')
+    await expect(page.getByText('No upcoming lessons')).toBeVisible()
+  } finally {
+    if (bookedDate) {
+      await openMyLessons(student)
+      await cancelAllBookings(student)
+    }
+    await student.context().close()
+  }
+})
+
+// Combined lessons are one room with two students; the teacher must see both
+// names and the same single join link, not two rooms.
+// The teacher acts on one student's booking: cancelling the day must not take
+// the other student with them.
+test('teacher cancels one student from a combined lesson, sparing the other', async ({ page }) => {
+  const a = await (await page.context().browser()!.newContext()).newPage()
+  const b = await (await page.context().browser()!.newContext()).newPage()
+  // 4th Friday: unclaimed by every other test, and cancelling still needs a day
+  // both students can hold
+  const date = nthWeekdayOfNextMonth(5, 4)
+  try {
+    await login(a, SEED.studentA.email)
+    await gotoNextMonth(a)
+    await a.locator(`[data-date="${date}"]`).click()
+    await a.getByRole('button', { name: 'Confirm booking' }).click()
+    await expect(a.locator(`[data-date="${date}"]`)).toContainText(SEED.studentA.name)
+
+    await login(b, SEED.studentB.email)
+    await gotoNextMonth(b)
+    await b.locator(`[data-date="${date}"]`).click()
+    await b.getByRole('button', { name: 'Confirm booking' }).click()
+    await expect(b.locator(`[data-date="${date}"]`)).toContainText('combined')
+
+    await login(page, SEED.teacher.email)
+    await page.goto('/lessons')
+    const card = page.locator(`[data-lesson-date="${date}"]`)
+    await expect(card).toContainText('combined')
+
+    // The dialog names the student, so this is unambiguous with two of them on
+    await card.locator('[data-cancel-student="Student A"]').click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText("Cancel Student A's lesson?")
+    await dialog.getByRole('button', { name: 'Cancel lesson' }).click()
+
+    // one gone, one left, and the lesson survived with its join link
+    const after = page.locator(`[data-lesson-date="${date}"]`)
+    await expect(after).not.toContainText('Student A')
+    await expect(after).toContainText('Student B')
+    await expect(after.getByRole('link', { name: 'Join lesson' })).toBeVisible()
+  } finally {
+    for (const s of [a, b]) {
+      await openMyLessons(s)
+      await cancelAllBookings(s)
+    }
+    await a.context().close()
+    await b.context().close()
+  }
+})
+
+test('teacher moves a student booking to another day', async ({ page }) => {
+  const student = await (await page.context().browser()!.newContext()).newPage()
+  const date = nthWeekdayOfNextMonth(5, 3) // 3rd Friday
+  try {
+    await login(student, SEED.studentA.email)
+    await gotoNextMonth(student)
+    await student.locator(`[data-date="${date}"]`).click()
+    await student.getByRole('button', { name: 'Confirm booking' }).click()
+    await expect(student.locator(`[data-date="${date}"]`)).toContainText(SEED.studentA.name)
+
+    await login(page, SEED.teacher.email)
+    await page.goto('/lessons')
+    await page.locator(`[data-lesson-date="${date}"]`)
+      .locator('[data-reschedule-student="Student A"]').click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText('Student A')
+    // next month's bookable days, offered the same way /mine offers them
+    const target = dialog.locator('[data-date]').first()
+    const newDate = await target.getAttribute('data-date')
+    await target.click()
+
+    // The card now lives on the new date and the old one is gone
+    const moved = page.locator(`[data-lesson-date="${newDate}"]`)
+    await expect(moved).toContainText('Student A')
+    await expect(page.locator(`[data-lesson-date="${date}"]`)).toHaveCount(0)
+  } finally {
+    await openMyLessons(student)
+    await cancelAllBookings(student)
+    await student.context().close()
+  }
+})
+
+test('teacher sees both students on a combined lesson', async ({ page }) => {
+  const a = await (await page.context().browser()!.newContext()).newPage()
+  const b = await (await page.context().browser()!.newContext()).newPage()
+  const date = nthWeekdayOfNextMonth(4, 4) // 4th Thursday
+  try {
+    await login(a, SEED.studentA.email)
+    await gotoNextMonth(a)
+    await a.locator(`[data-date="${date}"]`).click()
+    await a.getByRole('button', { name: 'Confirm booking' }).click()
+    await expect(a.locator(`[data-date="${date}"]`)).toContainText(SEED.studentA.name)
+
+    await login(b, SEED.studentB.email)
+    await gotoNextMonth(b)
+    await b.locator(`[data-date="${date}"]`).click()
+    await b.getByRole('button', { name: 'Confirm booking' }).click()
+    await expect(b.locator(`[data-date="${date}"]`)).toContainText('combined')
+
+    await login(page, SEED.teacher.email)
+    await page.goto('/lessons')
+
+    const card = page.locator(`[data-lesson-date="${date}"]`)
+    await expect(card).toContainText(SEED.studentA.name)
+    await expect(card).toContainText(SEED.studentB.name)
+    await expect(card).toContainText('combined')
+    await expect(card.getByRole('link', { name: 'Join lesson' })).toHaveCount(1)
+  } finally {
+    for (const s of [a, b]) {
+      await openMyLessons(s)
+      await cancelAllBookings(s)
+    }
+    await a.context().close()
+    await b.context().close()
+  }
 })
 
 test('admin calendar renders the same shared grid as the calendar page', async ({ page }) => {

@@ -10,6 +10,7 @@ public static class ReminderTitles
     public static string For(string template) => template switch
     {
         "confirmation" => "Lesson booked",
+        "new_booking" => "New lesson booked",
         "cancelled" => "Lesson cancelled",
         "rescheduled" => "Lesson moved",
         "monday" => "Your week ahead",

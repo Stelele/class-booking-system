@@ -27,6 +27,12 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
         if (clash) throw new BookingException("You already have a booking on the new day.");
 
         var oldSlotId = booking.SlotId;
+        var movedEmail = await db.Users.AsNoTracking()
+            .Where(u => u.Id == booking.StudentId)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new BookingException("That account has no email address.");
+
         var slot = await db.Slots.FirstOrDefaultAsync(s => s.Date == c.NewDate, ct);
         if (slot is null)
         {
@@ -37,7 +43,7 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
         if (slot.MeetLink is null
             || !await BookingSlotLifecycle.HasActiveBookingsAsync(db, slot, ct))
         {
-            var link = await meet.GetOrCreateLinkAsync(c.NewDate, ct);
+            var link = await meet.GetOrCreateLinkAsync(c.NewDate, [movedEmail], ct);
             slot.MeetLink = link.MeetLink;
             slot.GoogleEventId = link.GoogleEventId;
         }
@@ -85,6 +91,15 @@ public sealed class RescheduleBookingCommandHandler(IAppDbContext db, ICurrentUs
 
         if (releasedGoogleEventId is not null)
             await sync.DeleteEventAsync(releasedGoogleEventId, ct);
+
+        // Joining a day whose event already exists (a combined lesson) skips the
+        // insert above, so the moved-in student has to be added explicitly —
+        // otherwise the destination invite never reaches them.
+        await sync.UpdateAttendeesAsync(
+            slot.GoogleEventId,
+            await BookingSlotLifecycle.ActiveStudentEmailsAsync(db, slot, ct),
+            ct);
+
         await notifier.NotifyBookingChangedAsync(booking.Id, BookingChangeKind.Rescheduled, ct);
 
         return new BookingDto(booking.Id, c.NewDate, LessonTime.StartUtc(c.NewDate), user.Name,

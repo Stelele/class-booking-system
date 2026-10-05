@@ -1,5 +1,6 @@
 using Application.Abstractions;
 using Application.BlockedDays;
+using Application.Bookings;
 using Application.Users;
 
 namespace Endpoints;
@@ -55,6 +56,9 @@ public static class AdminEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         });
+
+        group.MapGet("/bookings", async (ISender sender, CancellationToken ct) =>
+            Results.Ok(await sender.Send(new ListAdminLessonsQuery(), ct)));
 
         group.MapGet("/users", async (ISender sender, CancellationToken ct) =>
             Results.Ok(await sender.Send(new ListUsersQuery(), ct)));

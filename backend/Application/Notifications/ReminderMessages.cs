@@ -21,6 +21,9 @@ public static class ReminderMessages
     public static string Rescheduled(string name, DateOnly newDate, string newLocalTime, DateOnly originalDate, string link) =>
         $"Hi {name}, your lesson moved from {Day(originalDate)} to {Day(newDate)} at {newLocalTime}. Join here: {link}";
 
+    public static string NewBooking(string studentName, DateOnly date, string localTime, string link) =>
+        $"New lesson booked: {studentName} on {Day(date)} at {localTime}. Join here: {link}";
+
     public static string MondaySummary(string name, List<(DateOnly date, string localTime)> lessons)
     {
         var lines = lessons.Select(l => $"- {Day(l.date)} at {l.localTime}");
